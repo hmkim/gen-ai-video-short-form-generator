@@ -27,7 +27,7 @@ const MainComponent: React.FC<MainComponentProps> = (props) => {
       <TopNavigation
         identity={{
           href: "/",
-          title: "Short-form Creator",
+          title: "Video Creator",
         }}
         utilities={[
           {
@@ -48,12 +48,19 @@ const MainComponent: React.FC<MainComponentProps> = (props) => {
           <SideNavigation
             header={{
               href: '/',
-              text: 'Short-form Creator',
+              text: 'Video Creator',
             }}
             items={[
-              { type: 'link', text: `Create Short-form`, href: `/` },
-              { type: 'link', text: `Short-form History`, href: `/history` },
-              { type: 'link', text: `Short-form Gallery`, href: `/gallery` },
+              { type: 'section-group', title: 'Short-form', items: [
+                { type: 'link', text: `Create Short-form`, href: `/` },
+                { type: 'link', text: `Short-form History`, href: `/history` },
+                { type: 'link', text: `Short-form Gallery`, href: `/gallery` },
+              ]},
+              { type: 'section-group', title: 'Long Video for YouTube', items: [
+                { type: 'link', text: `Upload Long Video`, href: `/longvideo` },
+                { type: 'link', text: `Long Video History`, href: `/longvideo/history` },
+                { type: 'link', text: `YouTube Settings`, href: `/youtube/connect` },
+              ]},
             ]}
           />
         }

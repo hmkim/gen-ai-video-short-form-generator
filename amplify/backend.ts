@@ -1,8 +1,8 @@
 import { defineBackend } from '@aws-amplify/backend';
 import { auth } from './auth/resource';
 import { storage } from './storage/resource';
-import { data, generateShortFunction } from './data/resource'
-import { GenerateShortStateMachine, VideoUploadStateMachine, UnifiedReasoningStateMachine } from './custom/resource';
+import { data, generateShortFunction, generateLongVideoOutputFunction, uploadToYouTubeFunction } from './data/resource'
+import { GenerateShortStateMachine, VideoUploadStateMachine, UnifiedReasoningStateMachine, LongVideoProcessStateMachine, GenerateLongVideoStateMachine, YouTubeUpload } from './custom/resource';
 import { BucketDeployment, Source } from 'aws-cdk-lib/aws-s3-deployment';
 import { CfnBucket } from 'aws-cdk-lib/aws-s3';
 import { EventBus, CfnRule } from 'aws-cdk-lib/aws-events'
@@ -15,13 +15,15 @@ const backend = defineBackend({
   storage,
   data,
   generateShortFunction,
+  generateLongVideoOutputFunction,
+  uploadToYouTubeFunction,
 });
 
 // Configure base resources
 const s3Bucket = backend.storage.resources.bucket;
 const cfnBucket = s3Bucket.node.defaultChild as CfnBucket;
 cfnBucket.accelerateConfiguration = {
-  accelerationStatus: "Enabled" 
+  accelerationStatus: "Enabled"
 };
 cfnBucket.notificationConfiguration = {
   eventBridgeConfiguration: {
@@ -39,6 +41,9 @@ new BucketDeployment(Stack.of(s3Bucket), "UploadBackgroundImage", {
 const highlightTable = backend.data.resources.tables["Highlight"]
 const historyTable = backend.data.resources.tables["History"]
 const galleryTable = backend.data.resources.tables["Gallery"]
+const longVideoEditTable = backend.data.resources.tables["LongVideoEdit"]
+const longVideoSegmentTable = backend.data.resources.tables["LongVideoSegment"]
+const longVideoOutputTable = backend.data.resources.tables["LongVideoOutput"]
 
 // Create EventBridge resources first
 const eventStack = backend.createStack("EventBridgeStack");
@@ -77,7 +82,7 @@ const eventBusRole = new Role(eventStack, "AppSyncInvokeRole", {
   },
 });
 
-// Configure EventBridge rule
+// Configure EventBridge rule for short-form StageChanged
 new CfnRule(eventStack, "AppSyncRule", {
   eventBusName: eventBus.eventBusName,
   eventPattern: {
@@ -103,7 +108,38 @@ new CfnRule(eventStack, "AppSyncRule", {
           stage: "$.detail.stage",
         },
         inputTemplate: `{"videoId": "<videoId>", "stage": <stage>}`,
-      },  
+      },
+    },
+  ],
+});
+
+// Configure EventBridge rule for long video LongVideoStageChanged
+new CfnRule(eventStack, "LongVideoAppSyncRule", {
+  eventBusName: eventBus.eventBusName,
+  eventPattern: {
+    ["detail-type"]: ["LongVideoStageChanged"],
+  },
+  targets: [
+    {
+      arn: backend.data.resources.cfnResources.cfnGraphqlApi.attrGraphQlEndpointArn,
+      id: "longVideoStageChangeReceiver",
+      roleArn: eventBusRole.roleArn,
+      appSyncParameters: {
+        graphQlOperation: `
+        mutation PublishLongVideo($videoId: String!, $stage: Int!) {
+          publishLongVideo(videoId: $videoId, stage: $stage) {
+            videoId
+            stage
+          }
+        }`,
+      },
+      inputTransformer: {
+        inputPathsMap: {
+          videoId: "$.detail.videoId",
+          stage: "$.detail.stage",
+        },
+        inputTemplate: `{"videoId": "<videoId>", "stage": <stage>}`,
+      },
     },
   ],
 });
@@ -192,3 +228,119 @@ generateShortFunc.cfnResources.cfnFunction.environment = {
     BUCKET_NAME: s3Bucket.bucketName,
   }
 }
+
+// ============================================================
+// Long Video Processing
+// ============================================================
+
+// Long Video Process Step Function (triggered by S3 LONG_RAW.mp4 upload)
+// Use stepfunctionStack to avoid circular dependency (data stack <-> new stack)
+const longVideoProcessStateMachine = new LongVideoProcessStateMachine(
+  stepfunctionStack,
+  "LongVideoProcessStateMachine",
+  {
+    bucket: s3Bucket,
+    longVideoEditTable: longVideoEditTable,
+    longVideoSegmentTable: longVideoSegmentTable,
+  }
+);
+
+s3Bucket.grantReadWrite(longVideoProcessStateMachine.stateMachine);
+
+const longVideoProcessRole = new Role(stepfunctionStack, "LongVideoProcessExecuteRole", {
+  assumedBy: new ServicePrincipal("events.amazonaws.com"),
+  inlinePolicies: {
+    StateMachineExecutePolicy: new PolicyDocument({
+      statements: [
+        new PolicyStatement({
+          effect: Effect.ALLOW,
+          actions: ["states:StartExecution"],
+          resources: ["*"],
+        }),
+      ],
+    }),
+  },
+});
+
+// S3 EventBridge rule: LONG_RAW.mp4 upload triggers LongVideoProcessStateMachine
+new CfnRule(
+  stepfunctionStack,
+  "LongVideoUploadRule",
+  {
+    eventPattern: {
+      source: ["aws.s3"],
+      ["detail-type"]: ["Object Created"],
+      detail: {
+        bucket: {
+          name: [s3Bucket.bucketName],
+        },
+        object: {
+          key: [{ prefix: "*/" }, { suffix: "LONG_RAW.mp4" }],
+        },
+      },
+    },
+    targets: [
+      {
+        arn: longVideoProcessStateMachine.stateMachine.stateMachineArn,
+        id: "longVideoProcessStateMachine",
+        roleArn: longVideoProcessRole.roleArn,
+      },
+    ],
+  }
+);
+
+// Generate Long Video Output Step Function
+// Use the same stack as generateLongVideoOutputFunction (data stack) to avoid circular deps
+const generateLongVideoOutputStack = backend.generateLongVideoOutputFunction.stack;
+const generateLongVideoStateMachine = new GenerateLongVideoStateMachine(
+  generateLongVideoOutputStack,
+  "GenerateLongVideoStateMachine",
+  {
+    bucket: s3Bucket,
+    longVideoEditTable: longVideoEditTable,
+    longVideoSegmentTable: longVideoSegmentTable,
+    longVideoOutputTable: longVideoOutputTable,
+  }
+);
+
+// Wire up generateLongVideoOutput function
+const generateLongVideoOutputFunc = backend.generateLongVideoOutputFunction.resources;
+
+generateLongVideoOutputFunc.lambda.addToRolePolicy(
+  new PolicyStatement({
+    effect: Effect.ALLOW,
+    actions: ["states:StartExecution"],
+    resources: ["*"],
+  }),
+);
+
+generateLongVideoOutputFunc.cfnResources.cfnFunction.environment = {
+  variables: {
+    STATE_MACHINE: generateLongVideoStateMachine.stateMachine.stateMachineArn,
+    BUCKET_NAME: s3Bucket.bucketName,
+  }
+};
+
+// Wire up YouTube upload function
+// Use the same stack as uploadToYouTubeFunction (data stack) to avoid circular deps
+const youtubeUploadStack = backend.uploadToYouTubeFunction.stack;
+const youtubeUpload = new YouTubeUpload(youtubeUploadStack, "YouTubeUpload", {
+  bucket: s3Bucket,
+  longVideoOutputTable: longVideoOutputTable,
+});
+
+const uploadToYouTubeFunc = backend.uploadToYouTubeFunction.resources;
+
+uploadToYouTubeFunc.lambda.addToRolePolicy(
+  new PolicyStatement({
+    effect: Effect.ALLOW,
+    actions: ["lambda:InvokeFunction"],
+    resources: [youtubeUpload.handler.functionArn],
+  }),
+);
+
+uploadToYouTubeFunc.cfnResources.cfnFunction.environment = {
+  variables: {
+    YOUTUBE_UPLOAD_FUNCTION: youtubeUpload.handler.functionName,
+  }
+};
