@@ -62,6 +62,18 @@ def lambda_handler(event, context):
             'EndTimecode': end_tc
         })
 
+    # Delete existing output for this presenter (prevent duplicates on regenerate)
+    existing = output_table.scan(
+        FilterExpression='longVideoEditId = :vid AND presenterNumber = :pn',
+        ExpressionAttributeValues={
+            ':vid': video_id,
+            ':pn': presenter_number,
+        },
+        ProjectionExpression='id'
+    )
+    for old in existing.get('Items', []):
+        output_table.delete_item(Key={'id': old['id']})
+
     # Create output record
     output_id = str(uuid.uuid4())
     timestamp = datetime.now(timezone.utc).isoformat()[:-6] + "Z"

@@ -352,8 +352,12 @@ const suggestVideoMetadataFunc = backend.suggestVideoMetadataFunction.resources;
 suggestVideoMetadataFunc.lambda.addToRolePolicy(
   new PolicyStatement({
     effect: Effect.ALLOW,
-    actions: ["bedrock:InvokeModel"],
-    resources: ["arn:aws:bedrock:us-west-2::foundation-model/*"],
+    actions: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+    resources: [
+      "arn:aws:bedrock:us-west-2::foundation-model/*",
+      "arn:aws:bedrock:us-west-2:664263524008:inference-profile/*",
+      "arn:aws:bedrock:us-west-2:664263524008:application-inference-profile/*",
+    ],
   }),
 );
 
