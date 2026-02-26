@@ -38,6 +38,12 @@ export const exchangeYouTubeTokenFunction = defineFunction({
 export const checkYouTubeConnectionFunction = defineFunction({
   entry: "./checkYouTubeConnection.ts",
   resourceGroupName: "data",
+  timeoutSeconds: 15,
+});
+
+export const saveYouTubeChannelFunction = defineFunction({
+  entry: "./saveYouTubeChannel.ts",
+  resourceGroupName: "data",
   timeoutSeconds: 10,
 });
 
@@ -231,6 +237,14 @@ const schema = a.schema({
     .returns(a.string())
     .authorization((allow) => [allow.authenticated()])
     .handler(a.handler.function(checkYouTubeConnectionFunction)),
+
+  saveYouTubeChannel: a.query()
+    .arguments({
+      channelId: a.string().required(),
+    })
+    .returns(a.string())
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(saveYouTubeChannelFunction)),
 
 });
 

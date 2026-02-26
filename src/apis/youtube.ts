@@ -20,3 +20,7 @@ export const exchangeYouTubeToken = async (
 export const checkYouTubeConnection = async () => {
   return await client.queries.checkYouTubeConnection({});
 };
+
+export const saveYouTubeChannel = async (channelId: string) => {
+  return await client.queries.saveYouTubeChannel({ channelId });
+};

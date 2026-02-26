@@ -1,7 +1,7 @@
 import { defineBackend } from '@aws-amplify/backend';
 import { auth } from './auth/resource';
 import { storage } from './storage/resource';
-import { data, generateShortFunction, generateLongVideoOutputFunction, uploadToYouTubeFunction, suggestVideoMetadataFunction, exchangeYouTubeTokenFunction, checkYouTubeConnectionFunction } from './data/resource'
+import { data, generateShortFunction, generateLongVideoOutputFunction, uploadToYouTubeFunction, suggestVideoMetadataFunction, exchangeYouTubeTokenFunction, checkYouTubeConnectionFunction, saveYouTubeChannelFunction } from './data/resource'
 import { GenerateShortStateMachine, VideoUploadStateMachine, UnifiedReasoningStateMachine, LongVideoProcessStateMachine, GenerateLongVideoStateMachine, YouTubeUpload } from './custom/resource';
 import { BucketDeployment, Source } from 'aws-cdk-lib/aws-s3-deployment';
 import { CfnBucket } from 'aws-cdk-lib/aws-s3';
@@ -20,6 +20,7 @@ const backend = defineBackend({
   suggestVideoMetadataFunction,
   exchangeYouTubeTokenFunction,
   checkYouTubeConnectionFunction,
+  saveYouTubeChannelFunction,
 });
 
 // Configure base resources
@@ -418,7 +419,24 @@ const checkYouTubeConnectionFunc = backend.checkYouTubeConnectionFunction.resour
 checkYouTubeConnectionFunc.lambda.addToRolePolicy(
   new PolicyStatement({
     effect: Effect.ALLOW,
-    actions: ["secretsmanager:GetSecretValue"],
+    actions: [
+      "secretsmanager:GetSecretValue",
+      "secretsmanager:PutSecretValue",
+    ],
+    resources: ["*"],
+  }),
+);
+
+// Wire up saveYouTubeChannel function
+const saveYouTubeChannelFunc = backend.saveYouTubeChannelFunction.resources;
+
+saveYouTubeChannelFunc.lambda.addToRolePolicy(
+  new PolicyStatement({
+    effect: Effect.ALLOW,
+    actions: [
+      "secretsmanager:GetSecretValue",
+      "secretsmanager:PutSecretValue",
+    ],
     resources: ["*"],
   }),
 );

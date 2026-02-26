@@ -40,7 +40,26 @@ export const handler: Schema["exchangeYouTubeToken"]["functionHandler"] = async 
       return JSON.stringify({ success: false, error: "No access token received" });
     }
 
-    // Store tokens in Secrets Manager
+    // Fetch Google account info using the access token
+    let accountEmail = "";
+    let accountName = "";
+    let accountPicture = "";
+    try {
+      const userInfoResponse = await fetch(
+        "https://www.googleapis.com/oauth2/v2/userinfo",
+        { headers: { Authorization: `Bearer ${tokens.access_token}` } }
+      );
+      if (userInfoResponse.ok) {
+        const userInfo = await userInfoResponse.json();
+        accountEmail = userInfo.email || "";
+        accountName = userInfo.name || "";
+        accountPicture = userInfo.picture || "";
+      }
+    } catch (e) {
+      console.warn("Could not fetch user info:", e);
+    }
+
+    // Store tokens + account info in Secrets Manager
     const secretValue = JSON.stringify({
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token,
@@ -50,6 +69,9 @@ export const handler: Schema["exchangeYouTubeToken"]["functionHandler"] = async 
       expiry: tokens.expires_in
         ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
         : undefined,
+      account_email: accountEmail,
+      account_name: accountName,
+      account_picture: accountPicture,
     });
 
     try {
