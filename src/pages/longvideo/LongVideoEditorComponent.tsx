@@ -260,7 +260,7 @@ const LongVideoEditorComponent: React.FC = () => {
                             {output && (
                               <Button
                                 variant="primary"
-                                onClick={() => navigate(`/longvideo/output/${id}`)}
+                                onClick={() => navigate(`/longvideo/output/${id}?presenter=${presenterNum}`)}
                               >
                                 View Output
                               </Button>

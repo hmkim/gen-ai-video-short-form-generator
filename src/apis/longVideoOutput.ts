@@ -49,6 +49,17 @@ export const uploadToYouTube = async (
   });
 };
 
+export const updateOutput = async (
+  id: string,
+  fields: { title?: string; description?: string; tags?: string }
+) => {
+  const { data: output } = await client.models.LongVideoOutput.update({
+    id,
+    ...fields,
+  });
+  return output;
+};
+
 export const suggestVideoMetadata = async (
   videoId: string,
   presenterNumber: number

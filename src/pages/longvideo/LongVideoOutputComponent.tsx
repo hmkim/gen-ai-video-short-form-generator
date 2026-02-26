@@ -1,14 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   Container, Header, SpaceBetween, Button, Box, Spinner,
   FormField, Input, Textarea, Alert, ColumnLayout, TokenGroup,
-  StatusIndicator, ExpandableSection,
+  StatusIndicator, ExpandableSection, Flashbar,
 } from '@cloudscape-design/components';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { getUrl } from 'aws-amplify/storage';
 import { readLongVideoEdit } from '../../apis/longVideoEdit';
 import {
   fetchOutputs, LongVideoOutput, uploadToYouTube, suggestVideoMetadata,
+  updateOutput,
 } from '../../apis/longVideoOutput';
 
 interface OutputMetadata {
@@ -16,22 +17,33 @@ interface OutputMetadata {
   description: string;
   tags: string[];
   playlistName: string;
+  dirty: boolean; // true if user changed something since last save
 }
 
 const LongVideoOutputComponent: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const presenterFilter = searchParams.get('presenter');
+
   const [outputs, setOutputs] = useState<LongVideoOutput[]>([]);
   const [loading, setLoading] = useState(true);
   const [presenterNames, setPresenterNames] = useState<Record<number, string>>({});
   const [videoUrls, setVideoUrls] = useState<Record<string, string>>({});
 
-  // Per-output metadata state
   const [metadata, setMetadata] = useState<Record<string, OutputMetadata>>({});
   const [suggesting, setSuggesting] = useState<Record<string, boolean>>({});
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [uploading, setUploading] = useState<string | null>(null);
   const [uploadStatus, setUploadStatus] = useState<Record<string, string>>({});
   const [newTag, setNewTag] = useState<Record<string, string>>({});
+  const [flashMessages, setFlashMessages] = useState<Array<{ id: string; type: "success" | "error"; content: string }>>([]);
+
+  const showFlash = useCallback((type: "success" | "error", content: string) => {
+    const msgId = Date.now().toString();
+    setFlashMessages(prev => [...prev, { id: msgId, type, content }]);
+    setTimeout(() => setFlashMessages(prev => prev.filter(m => m.id !== msgId)), 3000);
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -46,24 +58,30 @@ const LongVideoOutputComponent: React.FC = () => {
     });
 
     fetchOutputs(id).then(async (outputList) => {
-      setOutputs(outputList);
+      // Filter by presenter if query param is set
+      const filtered = presenterFilter
+        ? outputList.filter(o => o.presenterNumber === parseInt(presenterFilter))
+        : outputList;
+
+      setOutputs(filtered);
       setLoading(false);
 
-      // Initialize metadata from existing output records
+      // Initialize metadata from existing DB records
       const initialMeta: Record<string, OutputMetadata> = {};
-      for (const output of outputList) {
+      for (const output of filtered) {
         initialMeta[output.id] = {
           title: output.title || '',
           description: output.description || '',
           tags: output.tags ? JSON.parse(output.tags) : [],
           playlistName: '',
+          dirty: false,
         };
       }
       setMetadata(initialMeta);
 
       // Load video URLs
       const urls: Record<string, string> = {};
-      for (const output of outputList) {
+      for (const output of filtered) {
         if (output.s3Location) {
           try {
             const result = await getUrl({ path: output.s3Location });
@@ -75,31 +93,37 @@ const LongVideoOutputComponent: React.FC = () => {
       }
       setVideoUrls(urls);
 
-      // Auto-suggest metadata for outputs without titles
-      for (const output of outputList) {
+      // Auto-suggest ONLY for outputs that have no title saved in DB
+      for (const output of filtered) {
         if (!output.title) {
-          handleSuggest(output, id);
+          handleSuggestAndSave(output, id);
         }
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, presenterFilter]);
 
-  const handleSuggest = async (output: LongVideoOutput, videoId: string) => {
+  const handleSuggestAndSave = async (output: LongVideoOutput, videoId: string) => {
     setSuggesting(prev => ({ ...prev, [output.id]: true }));
     try {
       const result = await suggestVideoMetadata(videoId, output.presenterNumber);
       if (result.data) {
         const suggested = JSON.parse(result.data);
-        setMetadata(prev => ({
-          ...prev,
-          [output.id]: {
-            title: suggested.title || prev[output.id]?.title || '',
-            description: suggested.description || prev[output.id]?.description || '',
-            tags: suggested.tags || prev[output.id]?.tags || [],
-            playlistName: suggested.playlistName || prev[output.id]?.playlistName || '',
-          },
-        }));
+        const newMeta: OutputMetadata = {
+          title: suggested.title || '',
+          description: suggested.description || '',
+          tags: suggested.tags || [],
+          playlistName: suggested.playlistName || '',
+          dirty: false,
+        };
+        setMetadata(prev => ({ ...prev, [output.id]: newMeta }));
+
+        // Save to DDB immediately so it persists
+        await updateOutput(output.id, {
+          title: newMeta.title,
+          description: newMeta.description,
+          tags: JSON.stringify(newMeta.tags),
+        });
       }
     } catch (error) {
       console.error('Suggest error:', error);
@@ -107,11 +131,31 @@ const LongVideoOutputComponent: React.FC = () => {
     setSuggesting(prev => ({ ...prev, [output.id]: false }));
   };
 
-  const updateMeta = (outputId: string, field: keyof OutputMetadata, value: string | string[]) => {
+  const updateMeta = (outputId: string, field: keyof Omit<OutputMetadata, 'dirty'>, value: string | string[]) => {
     setMetadata(prev => ({
       ...prev,
-      [outputId]: { ...prev[outputId], [field]: value },
+      [outputId]: { ...prev[outputId], [field]: value, dirty: true },
     }));
+  };
+
+  const handleSave = async (outputId: string) => {
+    const meta = metadata[outputId];
+    if (!meta) return;
+
+    setSaving(prev => ({ ...prev, [outputId]: true }));
+    try {
+      await updateOutput(outputId, {
+        title: meta.title,
+        description: meta.description,
+        tags: JSON.stringify(meta.tags),
+      });
+      setMetadata(prev => ({ ...prev, [outputId]: { ...prev[outputId], dirty: false } }));
+      showFlash('success', 'Metadata saved');
+    } catch (error) {
+      console.error('Save error:', error);
+      showFlash('error', 'Failed to save metadata');
+    }
+    setSaving(prev => ({ ...prev, [outputId]: false }));
   };
 
   const handleAddTag = (outputId: string) => {
@@ -131,9 +175,7 @@ const LongVideoOutputComponent: React.FC = () => {
 
   const handleDownload = (outputId: string) => {
     const url = videoUrls[outputId];
-    if (url) {
-      window.open(url, '_blank');
-    }
+    if (url) window.open(url, '_blank');
   };
 
   const handleYouTubeUpload = async (output: LongVideoOutput) => {
@@ -142,6 +184,9 @@ const LongVideoOutputComponent: React.FC = () => {
       setUploadStatus(prev => ({ ...prev, [output.id]: 'error:Title is required' }));
       return;
     }
+
+    // Save first if dirty
+    if (meta.dirty) await handleSave(output.id);
 
     setUploading(output.id);
     setUploadStatus(prev => ({ ...prev, [output.id]: 'uploading' }));
@@ -182,13 +227,36 @@ const LongVideoOutputComponent: React.FC = () => {
 
   return (
     <SpaceBetween size="l">
-      <Header variant="h1">Video Outputs</Header>
+      <Flashbar
+        items={flashMessages.map(m => ({
+          id: m.id,
+          type: m.type,
+          content: m.content,
+          dismissible: true,
+          onDismiss: () => setFlashMessages(prev => prev.filter(p => p.id !== m.id)),
+        }))}
+      />
+
+      <Header
+        variant="h1"
+        actions={
+          presenterFilter ? (
+            <Button onClick={() => navigate(`/longvideo/output/${id}`)}>
+              Show All Presenters
+            </Button>
+          ) : undefined
+        }
+      >
+        Video Outputs
+        {presenterFilter ? ` - ${presenterNames[parseInt(presenterFilter)] || `Presenter ${presenterFilter}`}` : ''}
+      </Header>
 
       {outputs
         .sort((a, b) => a.presenterNumber - b.presenterNumber)
         .map((output) => {
-          const meta = metadata[output.id] || { title: '', description: '', tags: [], playlistName: '' };
+          const meta = metadata[output.id] || { title: '', description: '', tags: [], playlistName: '', dirty: false };
           const isSuggesting = suggesting[output.id] || false;
+          const isSaving = saving[output.id] || false;
           const status = uploadStatus[output.id] || '';
 
           return (
@@ -208,7 +276,7 @@ const LongVideoOutputComponent: React.FC = () => {
                       </Button>
                       <Button
                         iconName="refresh"
-                        onClick={() => handleSuggest(output, id!)}
+                        onClick={() => handleSuggestAndSave(output, id!)}
                         loading={isSuggesting}
                       >
                         AI Suggest
@@ -221,7 +289,6 @@ const LongVideoOutputComponent: React.FC = () => {
               }
             >
               <SpaceBetween size="l">
-                {/* Video Preview */}
                 {videoUrls[output.id] ? (
                   <video
                     src={videoUrls[output.id]}
@@ -234,14 +301,12 @@ const LongVideoOutputComponent: React.FC = () => {
                   </Box>
                 )}
 
-                {/* YouTube Upload ID if exists */}
                 {output.youtubeVideoId && (
                   <Alert type="success">
                     Already uploaded to YouTube: <strong>{output.youtubeVideoId}</strong>
                   </Alert>
                 )}
 
-                {/* Metadata Form */}
                 <ExpandableSection
                   headerText="YouTube Upload Details"
                   defaultExpanded={!output.youtubeVideoId}
@@ -311,7 +376,6 @@ const LongVideoOutputComponent: React.FC = () => {
                       />
                     </FormField>
 
-                    {/* Upload Status */}
                     {status === 'success' && (
                       <StatusIndicator type="success">Upload started successfully</StatusIndicator>
                     )}
@@ -319,15 +383,24 @@ const LongVideoOutputComponent: React.FC = () => {
                       <StatusIndicator type="error">{status.replace('error:', '')}</StatusIndicator>
                     )}
 
-                    <Button
-                      variant="primary"
-                      onClick={() => handleYouTubeUpload(output)}
-                      loading={uploading === output.id}
-                      iconName="upload"
-                      disabled={!meta.title}
-                    >
-                      Upload to YouTube
-                    </Button>
+                    <SpaceBetween size="xs" direction="horizontal">
+                      <Button
+                        onClick={() => handleSave(output.id)}
+                        loading={isSaving}
+                        disabled={!meta.dirty}
+                      >
+                        {meta.dirty ? 'Save Changes' : 'Saved'}
+                      </Button>
+                      <Button
+                        variant="primary"
+                        onClick={() => handleYouTubeUpload(output)}
+                        loading={uploading === output.id}
+                        iconName="upload"
+                        disabled={!meta.title}
+                      >
+                        Upload to YouTube
+                      </Button>
+                    </SpaceBetween>
                   </SpaceBetween>
                 </ExpandableSection>
               </SpaceBetween>
