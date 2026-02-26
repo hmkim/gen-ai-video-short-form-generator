@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
   Container, Header, SpaceBetween, Button, Box, Spinner,
-  FormField, Input, Alert, ColumnLayout,
+  FormField, Input, Alert, ColumnLayout, StatusIndicator, Modal,
 } from '@cloudscape-design/components';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getUrl } from 'aws-amplify/storage';
@@ -10,7 +10,7 @@ import {
   LONG_VIDEO_STAGE,
 } from '../../apis/longVideoEdit';
 import { fetchSegments, LongVideoSegment } from '../../apis/longVideoSegment';
-import { generateLongVideoOutput } from '../../apis/longVideoOutput';
+import { generateLongVideoOutput, fetchOutputs, LongVideoOutput } from '../../apis/longVideoOutput';
 import TimelineComponent from './components/TimelineComponent';
 import SegmentListComponent from './components/SegmentListComponent';
 
@@ -26,7 +26,11 @@ const LongVideoEditorComponent: React.FC = () => {
   const [totalDuration, setTotalDuration] = useState(0);
   const [presenter1Name, setPresenter1Name] = useState("Presenter 1");
   const [presenter2Name, setPresenter2Name] = useState("Presenter 2");
-  const [processing, setProcessing] = useState(false);
+  const [generatingPresenter, setGeneratingPresenter] = useState<number | null>(null);
+
+  // Track existing outputs per presenter
+  const [existingOutputs, setExistingOutputs] = useState<Record<number, LongVideoOutput | null>>({});
+  const [confirmRegenerate, setConfirmRegenerate] = useState<number | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -43,6 +47,8 @@ const LongVideoEditorComponent: React.FC = () => {
     const sub = subscribeLongVideoStage(id).subscribe({
       next: (event) => {
         setStage(event.stage);
+        // Refresh outputs when stage changes (video generation might have completed)
+        loadExistingOutputs(id);
       },
       error: (err) => {
         console.error("Subscription error", err);
@@ -56,10 +62,23 @@ const LongVideoEditorComponent: React.FC = () => {
       setVideoUrl(result.url.toString());
     });
 
+    // Load existing outputs
+    loadExistingOutputs(id);
+
     return () => {
       sub.unsubscribe();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  const loadExistingOutputs = async (videoId: string) => {
+    const outputs = await fetchOutputs(videoId);
+    const outputMap: Record<number, LongVideoOutput | null> = { 1: null, 2: null };
+    for (const output of outputs) {
+      outputMap[output.presenterNumber] = output;
+    }
+    setExistingOutputs(outputMap);
+  };
 
   // Load segments when stage >= ANALYZED
   useEffect(() => {
@@ -89,20 +108,39 @@ const LongVideoEditorComponent: React.FC = () => {
     setStage(LONG_VIDEO_STAGE.USER_CONFIRMED);
   };
 
-  const handleGenerateOutput = async (presenterNumber: number) => {
+  const handleGenerateClick = (presenterNumber: number) => {
+    if (existingOutputs[presenterNumber]) {
+      // Output already exists — ask for confirmation to regenerate
+      setConfirmRegenerate(presenterNumber);
+    } else {
+      doGenerate(presenterNumber);
+    }
+  };
+
+  const doGenerate = async (presenterNumber: number) => {
     if (!id) return;
-    setProcessing(true);
+    setConfirmRegenerate(null);
+    setGeneratingPresenter(presenterNumber);
     try {
       await generateLongVideoOutput(id, presenterNumber);
     } catch (error) {
       console.error("Error generating output:", error);
     }
-    setProcessing(false);
+    setGeneratingPresenter(null);
+    // Refresh outputs after a short delay (Step Function takes time)
+    setTimeout(() => loadExistingOutputs(id), 3000);
   };
 
   const handleSavePresenterNames = async () => {
     if (!id) return;
     await updateLongVideoEdit(id, { presenter1Name, presenter2Name });
+  };
+
+  const getPresenterName = (num: number) => num === 1 ? presenter1Name : presenter2Name;
+
+  const getIncludedSegmentCount = (presenterNumber: number) => {
+    const label = `presenter${presenterNumber}`;
+    return segments.filter(s => s.speakerLabel === label && s.includeInOutput).length;
   };
 
   if (stage === -1) {
@@ -180,7 +218,7 @@ const LongVideoEditorComponent: React.FC = () => {
           </Container>
 
           <Container>
-            <SpaceBetween size="m" direction="horizontal">
+            <SpaceBetween size="m">
               {stage === LONG_VIDEO_STAGE.ANALYZED && (
                 <Button variant="primary" onClick={handleConfirmSegments}>
                   Confirm Segments
@@ -188,33 +226,91 @@ const LongVideoEditorComponent: React.FC = () => {
               )}
 
               {stage >= LONG_VIDEO_STAGE.USER_CONFIRMED && (
-                <>
-                  <Button
-                    variant="primary"
-                    onClick={() => handleGenerateOutput(1)}
-                    loading={processing}
-                  >
-                    Generate {presenter1Name} Video
-                  </Button>
-                  <Button
-                    variant="primary"
-                    onClick={() => handleGenerateOutput(2)}
-                    loading={processing}
-                  >
-                    Generate {presenter2Name} Video
-                  </Button>
-                </>
+                <ColumnLayout columns={2}>
+                  {[1, 2].map((presenterNum) => {
+                    const output = existingOutputs[presenterNum];
+                    const isGenerating = generatingPresenter === presenterNum;
+                    const segCount = getIncludedSegmentCount(presenterNum);
+                    const name = getPresenterName(presenterNum);
+
+                    return (
+                      <Container key={presenterNum} variant="stacked">
+                        <SpaceBetween size="s">
+                          <Box variant="h4">{name}</Box>
+                          <Box variant="small" color="text-body-secondary">
+                            {segCount} segment{segCount !== 1 ? 's' : ''} included
+                          </Box>
+
+                          {output ? (
+                            <StatusIndicator type="success">Video generated</StatusIndicator>
+                          ) : stage >= LONG_VIDEO_STAGE.PROCESSING && presenterNum === generatingPresenter ? (
+                            <StatusIndicator type="in-progress">Generating...</StatusIndicator>
+                          ) : null}
+
+                          <SpaceBetween size="xs" direction="horizontal">
+                            <Button
+                              variant={output ? "normal" : "primary"}
+                              onClick={() => handleGenerateClick(presenterNum)}
+                              loading={isGenerating}
+                              disabled={segCount === 0 || (generatingPresenter !== null && !isGenerating)}
+                            >
+                              {output ? `Regenerate` : `Generate Video`}
+                            </Button>
+
+                            {output && (
+                              <Button
+                                variant="primary"
+                                onClick={() => navigate(`/longvideo/output/${id}`)}
+                              >
+                                View Output
+                              </Button>
+                            )}
+                          </SpaceBetween>
+                        </SpaceBetween>
+                      </Container>
+                    );
+                  })}
+                </ColumnLayout>
               )}
 
-              {stage >= LONG_VIDEO_STAGE.COMPLETE && (
-                <Button onClick={() => navigate(`/longvideo/output/${id}`)}>
-                  View Outputs
-                </Button>
+              {(existingOutputs[1] || existingOutputs[2]) && (
+                <Box float="right">
+                  <Button
+                    variant="primary"
+                    iconName="external"
+                    onClick={() => navigate(`/longvideo/output/${id}`)}
+                  >
+                    View All Outputs
+                  </Button>
+                </Box>
               )}
             </SpaceBetween>
           </Container>
         </>
       )}
+
+      {/* Regeneration confirmation modal */}
+      <Modal
+        visible={confirmRegenerate !== null}
+        onDismiss={() => setConfirmRegenerate(null)}
+        header="Regenerate Video?"
+        footer={
+          <Box float="right">
+            <SpaceBetween size="xs" direction="horizontal">
+              <Button variant="link" onClick={() => setConfirmRegenerate(null)}>Cancel</Button>
+              <Button variant="primary" onClick={() => doGenerate(confirmRegenerate!)}>
+                Regenerate
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+      >
+        <Box>
+          A video for <strong>{confirmRegenerate ? getPresenterName(confirmRegenerate) : ''}</strong> already exists.
+          Regenerating will create a new video based on the current segment selections.
+          The previous video will remain available until the new one is ready.
+        </Box>
+      </Modal>
     </SpaceBetween>
   );
 };
