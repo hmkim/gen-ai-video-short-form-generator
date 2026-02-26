@@ -4,7 +4,7 @@ import {
   Table, StatusIndicator, Alert, Modal, Flashbar,
 } from '@cloudscape-design/components';
 import { useNavigate } from 'react-router-dom';
-import { fetchAllOutputs, LongVideoOutput, updateOutput, client } from '../../apis/longVideoOutput';
+import { fetchAllOutputs, LongVideoOutput, client } from '../../apis/longVideoOutput';
 import { readLongVideoEdit } from '../../apis/longVideoEdit';
 
 interface UploadEntry extends LongVideoOutput {
@@ -105,29 +105,10 @@ const YouTubeUploadsComponent: React.FC = () => {
         </StatusIndicator>
       );
     }
-    if (upload.uploadStatus === 'cancelled') {
-      return <StatusIndicator type="stopped">Cancelled</StatusIndicator>;
-    }
     if (upload.youtubeVideoId) {
       return <StatusIndicator type="success">Uploaded</StatusIndicator>;
     }
     return <StatusIndicator type="pending">Unknown</StatusIndicator>;
-  };
-
-  const handleCancelUpload = async (upload: UploadEntry) => {
-    try {
-      await updateOutput(upload.id, {} as never);
-      // Use raw DDB update for uploadStatus
-      await client.models.LongVideoOutput.update({
-        id: upload.id,
-        uploadStatus: 'cancelled',
-      });
-      showFlash('success', 'Upload marked as cancelled');
-      loadUploads();
-    } catch (error) {
-      console.error('Cancel error:', error);
-      showFlash('error', 'Failed to cancel upload');
-    }
   };
 
   const handleDeleteFromYouTube = async (upload: UploadEntry) => {
@@ -246,15 +227,6 @@ const YouTubeUploadsComponent: React.FC = () => {
             header: 'Actions',
             cell: (item) => (
               <SpaceBetween size="xs" direction="horizontal">
-                {item.uploadStatus === 'uploading' && (
-                  <Button
-                    variant="normal"
-                    onClick={() => handleCancelUpload(item)}
-                    iconName="close"
-                  >
-                    Cancel
-                  </Button>
-                )}
                 {item.youtubeVideoId && (
                   <Button
                     variant="normal"
