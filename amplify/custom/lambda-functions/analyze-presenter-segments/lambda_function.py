@@ -50,16 +50,22 @@ def lambda_handler(event, context):
 
     with segment_table.batch_writer() as batch:
         for seg in refined_segments:
-            segment_id = seg.get('id', str(uuid.uuid4()))
+            segment_id = seg.get('id') or str(uuid.uuid4())
+            segment_id = str(segment_id)  # ensure string type for DDB key
+
+            start_time = float(seg.get('startTime', 0))
+            end_time = float(seg.get('endTime', 0))
+            ai_confidence = float(seg.get('aiConfidence', 0.5))
+
             item = {
                 'id': segment_id,
                 'longVideoEditId': video_id,
-                'startTime': Decimal(str(round(seg['startTime'], 3))),
-                'endTime': Decimal(str(round(seg['endTime'], 3))),
-                'speakerLabel': seg.get('speakerLabel', 'unknown'),
-                'segmentType': seg.get('segmentType', 'unknown'),
-                'includeInOutput': seg.get('includeInOutput', True),
-                'aiConfidence': Decimal(str(round(seg.get('aiConfidence', 0.5), 3))),
+                'startTime': Decimal(str(round(start_time, 3))),
+                'endTime': Decimal(str(round(end_time, 3))),
+                'speakerLabel': seg.get('speakerLabel') or 'unknown',
+                'segmentType': seg.get('segmentType') or 'unknown',
+                'includeInOutput': bool(seg.get('includeInOutput', True)),
+                'aiConfidence': Decimal(str(round(ai_confidence, 3))),
                 'owner': owner,
                 'updatedAt': timestamp,
                 'createdAt': timestamp,
@@ -164,11 +170,11 @@ Important: Return ALL {len(segments)} segments. Keep existing IDs. Respond only 
         print(f"Error in analyze_with_bedrock: {str(e)}")
         # Fall back to original segments - keep the speaker labels from DetectPresenterBoundaries
         return [{
-            'id': seg.get('id', str(uuid.uuid4())),
+            'id': seg.get('id') or str(uuid.uuid4()),
             'startTime': seg['startTime'],
             'endTime': seg['endTime'],
-            'speakerLabel': seg.get('speakerLabel', 'unknown'),
-            'segmentType': seg.get('segmentType', seg.get('speakerLabel', 'unknown')),
+            'speakerLabel': seg.get('speakerLabel') or 'unknown',
+            'segmentType': seg.get('segmentType') or seg.get('speakerLabel') or 'unknown',
             'includeInOutput': True,
             'aiConfidence': 0.5
         } for seg in segments]
