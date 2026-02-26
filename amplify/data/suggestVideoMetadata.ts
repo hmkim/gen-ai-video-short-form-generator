@@ -2,11 +2,59 @@ import type { Schema } from "./resource";
 import { BedrockRuntimeClient, ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, GetCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
 
 const bedrockClient = new BedrockRuntimeClient({ region: "us-west-2" });
 const s3Client = new S3Client();
 const ddbDocClient = DynamoDBDocumentClient.from(new DynamoDBClient());
+
+interface TranscriptItem {
+  type: string;
+  start_time?: string;
+  end_time?: string;
+  alternatives: { content: string }[];
+}
+
+interface Segment {
+  startTime: number;
+  endTime: number;
+  speakerLabel: string;
+  segmentType: string;
+  includeInOutput: boolean;
+}
+
+/**
+ * Extract transcript text that falls within the given time ranges.
+ */
+function extractPresenterTranscript(
+  items: TranscriptItem[],
+  segments: Segment[]
+): string {
+  const words: string[] = [];
+
+  for (const item of items) {
+    if (item.type === "punctuation") {
+      // Attach punctuation to last word
+      if (words.length > 0) {
+        words[words.length - 1] += item.alternatives[0].content;
+      }
+      continue;
+    }
+
+    const startTime = parseFloat(item.start_time || "0");
+
+    // Check if this word falls within any of the presenter's segments
+    const inSegment = segments.some(
+      (seg) => startTime >= seg.startTime && startTime < seg.endTime
+    );
+
+    if (inSegment) {
+      words.push(item.alternatives[0].content);
+    }
+  }
+
+  return words.join(" ");
+}
 
 export const handler: Schema["suggestVideoMetadata"]["functionHandler"] = async (
   event
@@ -15,6 +63,7 @@ export const handler: Schema["suggestVideoMetadata"]["functionHandler"] = async 
 
   const bucketName = process.env.BUCKET_NAME!;
   const editTableName = process.env.LONG_VIDEO_EDIT_TABLE_NAME!;
+  const segmentTableName = process.env.LONG_VIDEO_SEGMENT_TABLE_NAME!;
 
   // Read edit record for model ID, presenter names, video name
   const editResult = await ddbDocClient.send(
@@ -30,8 +79,33 @@ export const handler: Schema["suggestVideoMetadata"]["functionHandler"] = async 
     presenterNumber === 1 ? edit.presenter1Name : edit.presenter2Name;
   const videoName = (edit.videoName || "").replace(/\.[^.]+$/, "");
 
-  // Read transcript from S3
-  let fullScript = "";
+  // Query segments for this presenter
+  const presenterLabel = `presenter${presenterNumber}`;
+  const segmentResult = await ddbDocClient.send(
+    new ScanCommand({
+      TableName: segmentTableName,
+      FilterExpression:
+        "longVideoEditId = :vid AND speakerLabel = :label AND includeInOutput = :inc",
+      ExpressionAttributeValues: {
+        ":vid": videoId,
+        ":label": presenterLabel,
+        ":inc": true,
+      },
+    })
+  );
+
+  const segments: Segment[] = (segmentResult.Items || [])
+    .map((item) => ({
+      startTime: item.startTime as number,
+      endTime: item.endTime as number,
+      speakerLabel: item.speakerLabel as string,
+      segmentType: item.segmentType as string,
+      includeInOutput: item.includeInOutput as boolean,
+    }))
+    .sort((a, b) => a.startTime - b.startTime);
+
+  // Read transcript from S3 and extract presenter-specific text
+  let presenterScript = "";
   try {
     const transcriptObj = await s3Client.send(
       new GetObjectCommand({
@@ -41,34 +115,49 @@ export const handler: Schema["suggestVideoMetadata"]["functionHandler"] = async 
     );
     const transcriptStr = (await transcriptObj.Body?.transformToString()) || "";
     const transcript = JSON.parse(transcriptStr);
-    fullScript = transcript.results?.transcripts?.[0]?.transcript || "";
+    const items: TranscriptItem[] = transcript.results?.items || [];
+
+    if (items.length > 0 && segments.length > 0) {
+      presenterScript = extractPresenterTranscript(items, segments);
+    }
+
+    // Fallback to full transcript if extraction yielded nothing
+    if (!presenterScript) {
+      presenterScript =
+        transcript.results?.transcripts?.[0]?.transcript || "";
+    }
   } catch (e) {
     console.error("Error reading transcript:", e);
   }
 
-  // Use first/last parts for context
-  const scriptStart = fullScript.substring(0, 3000);
-  const scriptEnd =
-    fullScript.length > 6000
-      ? fullScript.substring(fullScript.length - 3000)
-      : "";
+  // Trim to reasonable size for the prompt (max ~6000 chars)
+  const trimmedScript =
+    presenterScript.length > 6000
+      ? presenterScript.substring(0, 3000) +
+        "\n...\n" +
+        presenterScript.substring(presenterScript.length - 3000)
+      : presenterScript;
 
-  const prompt = `You are helping prepare a YouTube video upload. The video is an edited recording of a webinar/seminar, showing only one presenter's segments.
+  const totalMinutes = segments.reduce(
+    (sum, s) => sum + (s.endTime - s.startTime),
+    0
+  ) / 60;
+
+  const prompt = `You are helping prepare a YouTube video upload. The video is an edited recording of a webinar/seminar, showing ONLY one presenter's segments (approximately ${totalMinutes.toFixed(0)} minutes).
 
 Video file name: ${videoName}
 Presenter name: ${presenterName || `Presenter ${presenterNumber}`}
+Number of segments: ${segments.length}
 
-Transcript beginning:
-${scriptStart}
+Below is the transcript of ONLY this presenter's speaking segments:
+${trimmedScript}
 
-${scriptEnd ? `Transcript ending:\n${scriptEnd}` : ""}
+Based on THIS PRESENTER'S content only, generate YouTube video metadata:
 
-Based on this content, generate YouTube video metadata for this presenter's video:
-
-1. **Title** (required): A compelling, SEO-friendly YouTube title (max 100 chars). Include the main topic. If the presenter name is meaningful (not "Presenter 1"), include it.
-2. **Description**: A YouTube description (200-500 chars) summarizing what this presenter covers. Include key topics and takeaways.
+1. **Title** (required): A compelling, SEO-friendly YouTube title (max 100 chars). Include the main topic this presenter covers. If the presenter name is meaningful (not "Presenter 1"), include it.
+2. **Description**: A YouTube description (200-500 chars) summarizing what this specific presenter covers. Include key topics and takeaways from their segments.
 3. **Tags**: 5-10 relevant YouTube tags for discoverability.
-4. **Playlist name**: A suggested playlist name this video could belong to (e.g., "AWS re:Invent 2025", "Tech Talks", etc.)
+4. **Playlist name**: A suggested playlist name this video could belong to.
 
 Return ONLY valid JSON:
 {"title": "...", "description": "...", "tags": ["tag1", "tag2"], "playlistName": "..."}`;
@@ -97,7 +186,6 @@ Return ONLY valid JSON:
     return rawResult;
   } catch (error) {
     console.error("Bedrock error:", error);
-    // Fallback suggestions
     return JSON.stringify({
       title: `${presenterName || `Presenter ${presenterNumber}`} - ${videoName}`,
       description: `Presentation by ${presenterName || `Presenter ${presenterNumber}`}`,

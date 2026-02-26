@@ -342,9 +342,18 @@ uploadToYouTubeFunc.lambda.addToRolePolicy(
   }),
 );
 
+uploadToYouTubeFunc.lambda.addToRolePolicy(
+  new PolicyStatement({
+    effect: Effect.ALLOW,
+    actions: ["dynamodb:UpdateItem"],
+    resources: [longVideoOutputTable.tableArn],
+  }),
+);
+
 uploadToYouTubeFunc.cfnResources.cfnFunction.environment = {
   variables: {
     YOUTUBE_UPLOAD_FUNCTION: youtubeUpload.handler.functionName,
+    LONG_VIDEO_OUTPUT_TABLE_NAME: longVideoOutputTable.tableName,
   }
 };
 
@@ -374,8 +383,8 @@ suggestVideoMetadataFunc.lambda.addToRolePolicy(
 suggestVideoMetadataFunc.lambda.addToRolePolicy(
   new PolicyStatement({
     effect: Effect.ALLOW,
-    actions: ["dynamodb:GetItem"],
-    resources: [longVideoEditTable.tableArn],
+    actions: ["dynamodb:GetItem", "dynamodb:Scan", "dynamodb:Query"],
+    resources: [longVideoEditTable.tableArn, longVideoSegmentTable.tableArn],
   }),
 );
 
@@ -383,6 +392,7 @@ suggestVideoMetadataFunc.cfnResources.cfnFunction.environment = {
   variables: {
     BUCKET_NAME: s3Bucket.bucketName,
     LONG_VIDEO_EDIT_TABLE_NAME: longVideoEditTable.tableName,
+    LONG_VIDEO_SEGMENT_TABLE_NAME: longVideoSegmentTable.tableName,
   }
 };
 

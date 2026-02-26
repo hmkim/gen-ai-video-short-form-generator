@@ -200,6 +200,7 @@ const LongVideoOutputComponent: React.FC = () => {
         meta.playlistName || undefined
       );
       setUploadStatus(prev => ({ ...prev, [output.id]: 'success' }));
+      showFlash('success', 'YouTube upload started. Check progress in YouTube Uploads page.');
     } catch (error) {
       console.error('YouTube upload error:', error);
       setUploadStatus(prev => ({ ...prev, [output.id]: 'error:Upload failed' }));

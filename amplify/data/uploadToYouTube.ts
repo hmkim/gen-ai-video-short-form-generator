@@ -1,15 +1,33 @@
 import type { Schema } from "./resource";
 import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
 const lambdaClient = new LambdaClient();
+const ddbDocClient = DynamoDBDocumentClient.from(new DynamoDBClient());
 
 export const handler: Schema["uploadToYouTube"]["functionHandler"] = async (
-  event,
-  context
+  event
 ) => {
   const { outputId, title, description, tags, playlistName } = event.arguments;
+  const outputTableName = process.env.LONG_VIDEO_OUTPUT_TABLE_NAME!;
 
   try {
+    // Set upload status to 'uploading' in DDB before starting
+    await ddbDocClient.send(
+      new UpdateCommand({
+        TableName: outputTableName,
+        Key: { id: outputId },
+        UpdateExpression:
+          "SET uploadStatus = :s, uploadStartedAt = :t, uploadError = :e",
+        ExpressionAttributeValues: {
+          ":s": "uploading",
+          ":t": new Date().toISOString(),
+          ":e": "",
+        },
+      })
+    );
+
     const payload = JSON.stringify({
       outputId,
       title,

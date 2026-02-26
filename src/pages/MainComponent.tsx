@@ -59,6 +59,7 @@ const MainComponent: React.FC<MainComponentProps> = (props) => {
               { type: 'section-group', title: 'Long Video for YouTube', items: [
                 { type: 'link', text: `Upload Long Video`, href: `/longvideo` },
                 { type: 'link', text: `Long Video History`, href: `/longvideo/history` },
+                { type: 'link', text: `YouTube Uploads`, href: `/youtube/uploads` },
                 { type: 'link', text: `YouTube Settings`, href: `/youtube/connect` },
               ]},
             ]}

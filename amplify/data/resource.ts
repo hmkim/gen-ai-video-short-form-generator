@@ -113,6 +113,9 @@ const schema = a.schema({
       title: a.string(),
       description: a.string(),
       tags: a.string(),
+      uploadStatus: a.string(), // 'uploading' | 'completed' | 'failed' | 'cancelled'
+      uploadError: a.string(),
+      uploadStartedAt: a.string(),
       longVideoEdit: a.belongsTo("LongVideoEdit", "longVideoEditId"),
     })
     .authorization((allow) => [allow.owner()]),

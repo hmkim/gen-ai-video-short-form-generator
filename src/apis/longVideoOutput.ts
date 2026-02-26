@@ -69,3 +69,8 @@ export const suggestVideoMetadata = async (
     presenterNumber,
   });
 };
+
+export const fetchAllOutputs = async () => {
+  const { data: outputs } = await client.models.LongVideoOutput.list();
+  return outputs;
+};

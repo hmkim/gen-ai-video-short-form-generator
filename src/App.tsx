@@ -16,6 +16,7 @@ import LongVideoEditorComponent from './pages/longvideo/LongVideoEditorComponent
 import LongVideoOutputComponent from './pages/longvideo/LongVideoOutputComponent';
 import YouTubeConnectComponent from './pages/youtube/YouTubeConnectComponent';
 import YouTubeCallbackComponent from './pages/youtube/YouTubeCallbackComponent';
+import YouTubeUploadsComponent from './pages/youtube/YouTubeUploadsComponent';
 
 
 Amplify.configure(outputs);
@@ -39,6 +40,7 @@ function App() {
               <Route path="/longvideo/output/:id" element={<LongVideoOutputComponent />} />
               <Route path="/youtube/connect" element={<YouTubeConnectComponent />} />
               <Route path="/youtube/callback" element={<YouTubeCallbackComponent />} />
+              <Route path="/youtube/uploads" element={<YouTubeUploadsComponent />} />
             </Route>
           </Routes>
         </BrowserRouter>
