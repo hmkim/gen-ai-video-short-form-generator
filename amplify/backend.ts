@@ -354,9 +354,9 @@ suggestVideoMetadataFunc.lambda.addToRolePolicy(
     effect: Effect.ALLOW,
     actions: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
     resources: [
-      "arn:aws:bedrock:us-west-2::foundation-model/*",
-      "arn:aws:bedrock:us-west-2:664263524008:inference-profile/*",
-      "arn:aws:bedrock:us-west-2:664263524008:application-inference-profile/*",
+      "arn:aws:bedrock:*::foundation-model/*",
+      `arn:aws:bedrock:*:${Stack.of(suggestVideoMetadataFunc.lambda).account}:inference-profile/*`,
+      `arn:aws:bedrock:*:${Stack.of(suggestVideoMetadataFunc.lambda).account}:application-inference-profile/*`,
     ],
   }),
 );
