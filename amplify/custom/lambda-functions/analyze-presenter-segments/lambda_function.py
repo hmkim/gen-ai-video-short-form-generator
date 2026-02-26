@@ -44,7 +44,18 @@ def lambda_handler(event, context):
         script, segments, boundaries, model_id
     )
 
-    # Update segments in DDB
+    # Delete old segments for this video before writing refined ones
+    # (DetectPresenterBoundaries wrote initial segments; AI may return new IDs)
+    old_segments = segment_table.scan(
+        FilterExpression='longVideoEditId = :vid',
+        ExpressionAttributeValues={':vid': video_id},
+        ProjectionExpression='id'
+    )
+    with segment_table.batch_writer() as batch:
+        for old in old_segments.get('Items', []):
+            batch.delete_item(Key={'id': old['id']})
+
+    # Write refined segments
     from datetime import datetime, timezone
     timestamp = datetime.now(timezone.utc).isoformat()[:-6] + "Z"
 
