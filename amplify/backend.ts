@@ -1,7 +1,7 @@
 import { defineBackend } from '@aws-amplify/backend';
 import { auth } from './auth/resource';
 import { storage } from './storage/resource';
-import { data, generateShortFunction, generateLongVideoOutputFunction, uploadToYouTubeFunction, suggestVideoMetadataFunction } from './data/resource'
+import { data, generateShortFunction, generateLongVideoOutputFunction, uploadToYouTubeFunction, suggestVideoMetadataFunction, exchangeYouTubeTokenFunction, checkYouTubeConnectionFunction } from './data/resource'
 import { GenerateShortStateMachine, VideoUploadStateMachine, UnifiedReasoningStateMachine, LongVideoProcessStateMachine, GenerateLongVideoStateMachine, YouTubeUpload } from './custom/resource';
 import { BucketDeployment, Source } from 'aws-cdk-lib/aws-s3-deployment';
 import { CfnBucket } from 'aws-cdk-lib/aws-s3';
@@ -18,6 +18,8 @@ const backend = defineBackend({
   generateLongVideoOutputFunction,
   uploadToYouTubeFunction,
   suggestVideoMetadataFunction,
+  exchangeYouTubeTokenFunction,
+  checkYouTubeConnectionFunction,
 });
 
 // Configure base resources
@@ -383,3 +385,30 @@ suggestVideoMetadataFunc.cfnResources.cfnFunction.environment = {
     LONG_VIDEO_EDIT_TABLE_NAME: longVideoEditTable.tableName,
   }
 };
+
+// Wire up exchangeYouTubeToken function
+const exchangeYouTubeTokenFunc = backend.exchangeYouTubeTokenFunction.resources;
+
+exchangeYouTubeTokenFunc.lambda.addToRolePolicy(
+  new PolicyStatement({
+    effect: Effect.ALLOW,
+    actions: [
+      "secretsmanager:GetSecretValue",
+      "secretsmanager:PutSecretValue",
+      "secretsmanager:CreateSecret",
+      "secretsmanager:UpdateSecret",
+    ],
+    resources: ["*"],
+  }),
+);
+
+// Wire up checkYouTubeConnection function
+const checkYouTubeConnectionFunc = backend.checkYouTubeConnectionFunction.resources;
+
+checkYouTubeConnectionFunc.lambda.addToRolePolicy(
+  new PolicyStatement({
+    effect: Effect.ALLOW,
+    actions: ["secretsmanager:GetSecretValue"],
+    resources: ["*"],
+  }),
+);

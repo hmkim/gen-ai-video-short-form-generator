@@ -29,6 +29,18 @@ export const suggestVideoMetadataFunction = defineFunction({
   timeoutSeconds: 120,
 });
 
+export const exchangeYouTubeTokenFunction = defineFunction({
+  entry: "./exchangeYouTubeToken.ts",
+  resourceGroupName: "data",
+  timeoutSeconds: 30,
+});
+
+export const checkYouTubeConnectionFunction = defineFunction({
+  entry: "./checkYouTubeConnection.ts",
+  resourceGroupName: "data",
+  timeoutSeconds: 10,
+});
+
 const schema = a.schema({
   History: a
     .model({
@@ -199,6 +211,23 @@ const schema = a.schema({
     .returns(a.string())
     .authorization((allow) => [allow.authenticated()])
     .handler(a.handler.function(suggestVideoMetadataFunction)),
+
+  exchangeYouTubeToken: a.query()
+    .arguments({
+      code: a.string().required(),
+      redirectUri: a.string().required(),
+      clientId: a.string().required(),
+      clientSecret: a.string().required(),
+    })
+    .returns(a.string())
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(exchangeYouTubeTokenFunction)),
+
+  checkYouTubeConnection: a.query()
+    .arguments({})
+    .returns(a.string())
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(checkYouTubeConnectionFunction)),
 
 });
 
