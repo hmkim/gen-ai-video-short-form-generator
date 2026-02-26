@@ -82,6 +82,7 @@ const SegmentListComponent: React.FC<SegmentListComponentProps> = ({
               selectedOption={SEGMENT_TYPE_OPTIONS.find(o => o.value === item.segmentType) || { label: item.segmentType, value: item.segmentType }}
               onChange={({ detail }) => handleTypeChange(item, detail.selectedOption.value!)}
               options={SEGMENT_TYPE_OPTIONS}
+              expandToViewport
             />
           ),
           width: 180,
