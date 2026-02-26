@@ -55,8 +55,9 @@ def extract_speaker_segments(transcript_json):
     return speaker_segments
 
 
-def merge_consecutive_speaker_segments(speaker_segments, max_gap=1.0):
-    """Merge consecutive segments from the same speaker."""
+def merge_consecutive_speaker_segments(speaker_segments, max_gap=3.0):
+    """Merge consecutive segments from the same speaker.
+    Also merge very short segments (<5s) into the previous segment."""
     if not speaker_segments:
         return []
 
@@ -64,11 +65,24 @@ def merge_consecutive_speaker_segments(speaker_segments, max_gap=1.0):
 
     for seg in speaker_segments[1:]:
         last = merged[-1]
+        # Merge same-speaker segments with small gaps
         if (seg['speaker_label'] == last['speaker_label']
                 and seg['start_time'] - last['end_time'] <= max_gap):
             last['end_time'] = seg['end_time']
         else:
             merged.append(seg.copy())
+
+    # Second pass: absorb very short segments (<5s) into neighbors
+    if len(merged) > 1:
+        final = [merged[0]]
+        for seg in merged[1:]:
+            duration = seg['end_time'] - seg['start_time']
+            if duration < 5.0 and final:
+                # Absorb into previous segment
+                final[-1]['end_time'] = seg['end_time']
+            else:
+                final.append(seg)
+        merged = final
 
     return merged
 

@@ -74,54 +74,70 @@ def lambda_handler(event, context):
 
 
 def analyze_with_bedrock(script, segments, boundaries, model_id):
-    """Use Bedrock to classify segments as presenter1/presenter2/intro/outro/transition/qa/silence."""
-    segments_summary = json.dumps(segments[:50], indent=2)  # Limit for context window
-    boundaries_summary = json.dumps(boundaries[:20], indent=2)
+    """Use Bedrock to refine segment classification using AI.
 
-    prompt = f"""
-    Below is a transcript of a webinar/seminar video with two presenters.
-    <script>{script[:8000]}</script>
-
-    Here are the detected speaker segments (speaker boundaries from Amazon Transcribe):
-    <segments>{segments_summary}</segments>
-
-    Here are the detected speaker change boundaries:
-    <boundaries>{boundaries_summary}</boundaries>
-
-    Analyze these segments and classify each one. The video has exactly 2 presenters.
-    For each segment, determine:
-    1. Whether it belongs to presenter1, presenter2, or is a non-presentation segment
-    2. Non-presentation types: "intro", "outro", "transition", "qa", "silence"
-    3. Whether it should be included in the final output (exclude intros, outros, transitions, Q&A sections)
-    4. Your confidence level (0.0-1.0)
-
-    Return the analysis in this JSON format:
-    <JSON>
-    {{
-      "segments": [
-        {{
-          "id": "segment_id",
-          "startTime": 0.0,
-          "endTime": 30.5,
-          "speakerLabel": "presenter1",
-          "segmentType": "presenter1",
-          "includeInOutput": true,
-          "aiConfidence": 0.95
-        }}
-      ]
-    }}
-    </JSON>
-
-    Important:
-    - Keep existing segment IDs where available
-    - Presenter segments should have segmentType matching their speakerLabel
-    - Mark intro/outro/transition/qa/silence segments with includeInOutput: false
-    - Respond only with the JSON structure above
+    The segments already have speaker labels from Transcribe diarization.
+    AI's job is to:
+    1. Identify intro/outro/transition/qa sections
+    2. Determine which Transcribe speaker (spk_0/spk_1) maps to presenter1/presenter2
+    3. Mark segments for inclusion/exclusion
     """
+    # Build a concise summary of segments with their speaker labels
+    seg_lines = []
+    for i, seg in enumerate(segments):
+        seg_lines.append(
+            f"{i}: {seg['startTime']:.1f}-{seg['endTime']:.1f}s "
+            f"speaker={seg.get('speakerLabel','?')} "
+            f"dur={seg['endTime']-seg['startTime']:.1f}s"
+        )
+    segments_text = "\n".join(seg_lines)
+
+    # Use first and last parts of transcript for context (intro/outro detection)
+    script_start = script[:4000]
+    script_end = script[-4000:] if len(script) > 8000 else ""
+
+    prompt = f"""Below is a webinar/seminar video with exactly 2 presenters.
+
+The transcript beginning:
+<script_start>{script_start}</script_start>
+
+{"The transcript ending:" if script_end else ""}
+{"<script_end>" + script_end + "</script_end>" if script_end else ""}
+
+Here are {len(segments)} detected segments with Transcribe speaker diarization labels:
+<segments>
+{segments_text}
+</segments>
+
+Speaker change boundaries detected:
+<boundaries>{json.dumps(boundaries[:30], indent=1)}</boundaries>
+
+Tasks:
+1. The segments already have speaker labels (presenter1/presenter2) from Transcribe diarization. Keep these assignments - they are reliable.
+2. Identify non-presentation sections by analyzing transcript content and timing:
+   - "intro": opening remarks, greetings, agenda before main content (typically first few minutes)
+   - "outro": closing remarks, wrap-up at the end
+   - "transition": between-presenter transitions, "thank you, next speaker" moments
+   - "qa": Q&A sections (audience questions, discussion)
+   - "silence": gaps with no meaningful content
+3. For segments already labeled presenter1/presenter2, keep that label unless it's clearly a non-presentation section.
+4. Set includeInOutput=false for intro/outro/transition/qa/silence segments.
+5. Merge very short segments (<3s) with their neighbors where possible.
+
+Return JSON:
+<JSON>
+{{
+  "segments": [
+    {{"id": "existing_id", "startTime": 0.0, "endTime": 30.5, "speakerLabel": "presenter1", "segmentType": "presenter1", "includeInOutput": true, "aiConfidence": 0.9}}
+  ]
+}}
+</JSON>
+
+Important: Return ALL {len(segments)} segments. Keep existing IDs. Respond only with JSON."""
 
     messages = [{"role": "user", "content": [{"text": prompt}]}]
-    system_prompts = [{"text": "You are an AI assistant that analyzes video transcripts to identify presenter segments and non-presentation segments."}]
-    inference_config = {"temperature": 0.3, "maxTokens": 8192, "topP": 0.9}
+    system_prompts = [{"text": "You are an expert video editor analyzing webinar recordings to identify presenter segments and non-presentation sections. Be precise with segment classification."}]
+    inference_config = {"temperature": 0.3, "maxTokens": 16384}
 
     try:
         response = bedrock.converse(
@@ -137,11 +153,16 @@ def analyze_with_bedrock(script, segments, boundaries, model_id):
         end_index = raw_result.rfind('}')
         result = json.loads(raw_result[first_index:end_index + 1])
 
-        return result.get('segments', segments)
+        ai_segments = result.get('segments', [])
+        if ai_segments:
+            return ai_segments
+
+        # If AI returned empty, fall back to original
+        return segments
 
     except Exception as e:
         print(f"Error in analyze_with_bedrock: {str(e)}")
-        # Fall back to original segments with default classification
+        # Fall back to original segments - keep the speaker labels from DetectPresenterBoundaries
         return [{
             'id': seg.get('id', str(uuid.uuid4())),
             'startTime': seg['startTime'],
