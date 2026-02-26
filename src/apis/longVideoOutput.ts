@@ -36,11 +36,25 @@ export const generateLongVideoOutput = async (
 export const uploadToYouTube = async (
   outputId: string,
   title: string,
-  description?: string
+  description?: string,
+  tags?: string,
+  playlistName?: string
 ) => {
   return await client.queries.uploadToYouTube({
     outputId,
     title,
     description,
+    tags,
+    playlistName,
+  });
+};
+
+export const suggestVideoMetadata = async (
+  videoId: string,
+  presenterNumber: number
+) => {
+  return await client.queries.suggestVideoMetadata({
+    videoId,
+    presenterNumber,
   });
 };

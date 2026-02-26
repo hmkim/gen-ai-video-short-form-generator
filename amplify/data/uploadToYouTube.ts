@@ -7,13 +7,15 @@ export const handler: Schema["uploadToYouTube"]["functionHandler"] = async (
   event,
   context
 ) => {
-  const { outputId, title, description } = event.arguments;
+  const { outputId, title, description, tags, playlistName } = event.arguments;
 
   try {
     const payload = JSON.stringify({
       outputId,
       title,
       description: description || "",
+      tags: tags ? JSON.parse(tags) : [],
+      playlistName: playlistName || "",
     });
 
     const command = new InvokeCommand({

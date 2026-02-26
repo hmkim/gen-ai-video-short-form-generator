@@ -1,7 +1,7 @@
 import { defineBackend } from '@aws-amplify/backend';
 import { auth } from './auth/resource';
 import { storage } from './storage/resource';
-import { data, generateShortFunction, generateLongVideoOutputFunction, uploadToYouTubeFunction } from './data/resource'
+import { data, generateShortFunction, generateLongVideoOutputFunction, uploadToYouTubeFunction, suggestVideoMetadataFunction } from './data/resource'
 import { GenerateShortStateMachine, VideoUploadStateMachine, UnifiedReasoningStateMachine, LongVideoProcessStateMachine, GenerateLongVideoStateMachine, YouTubeUpload } from './custom/resource';
 import { BucketDeployment, Source } from 'aws-cdk-lib/aws-s3-deployment';
 import { CfnBucket } from 'aws-cdk-lib/aws-s3';
@@ -17,6 +17,7 @@ const backend = defineBackend({
   generateShortFunction,
   generateLongVideoOutputFunction,
   uploadToYouTubeFunction,
+  suggestVideoMetadataFunction,
 });
 
 // Configure base resources
@@ -342,5 +343,39 @@ uploadToYouTubeFunc.lambda.addToRolePolicy(
 uploadToYouTubeFunc.cfnResources.cfnFunction.environment = {
   variables: {
     YOUTUBE_UPLOAD_FUNCTION: youtubeUpload.handler.functionName,
+  }
+};
+
+// Wire up suggestVideoMetadata function
+const suggestVideoMetadataFunc = backend.suggestVideoMetadataFunction.resources;
+
+suggestVideoMetadataFunc.lambda.addToRolePolicy(
+  new PolicyStatement({
+    effect: Effect.ALLOW,
+    actions: ["bedrock:InvokeModel"],
+    resources: ["arn:aws:bedrock:us-west-2::foundation-model/*"],
+  }),
+);
+
+suggestVideoMetadataFunc.lambda.addToRolePolicy(
+  new PolicyStatement({
+    effect: Effect.ALLOW,
+    actions: ["s3:GetObject"],
+    resources: [s3Bucket.arnForObjects("*")],
+  }),
+);
+
+suggestVideoMetadataFunc.lambda.addToRolePolicy(
+  new PolicyStatement({
+    effect: Effect.ALLOW,
+    actions: ["dynamodb:GetItem"],
+    resources: [longVideoEditTable.tableArn],
+  }),
+);
+
+suggestVideoMetadataFunc.cfnResources.cfnFunction.environment = {
+  variables: {
+    BUCKET_NAME: s3Bucket.bucketName,
+    LONG_VIDEO_EDIT_TABLE_NAME: longVideoEditTable.tableName,
   }
 };

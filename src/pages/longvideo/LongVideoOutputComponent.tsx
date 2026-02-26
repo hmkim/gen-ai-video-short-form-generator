@@ -1,22 +1,37 @@
 import React, { useEffect, useState } from 'react';
 import {
   Container, Header, SpaceBetween, Button, Box, Spinner,
-  Cards, FormField, Input, Alert,
+  FormField, Input, Textarea, Alert, ColumnLayout, TokenGroup,
+  StatusIndicator, ExpandableSection,
 } from '@cloudscape-design/components';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { getUrl } from 'aws-amplify/storage';
 import { readLongVideoEdit } from '../../apis/longVideoEdit';
-import { fetchOutputs, LongVideoOutput, uploadToYouTube } from '../../apis/longVideoOutput';
+import {
+  fetchOutputs, LongVideoOutput, uploadToYouTube, suggestVideoMetadata,
+} from '../../apis/longVideoOutput';
+
+interface OutputMetadata {
+  title: string;
+  description: string;
+  tags: string[];
+  playlistName: string;
+}
 
 const LongVideoOutputComponent: React.FC = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [outputs, setOutputs] = useState<LongVideoOutput[]>([]);
   const [loading, setLoading] = useState(true);
   const [presenterNames, setPresenterNames] = useState<Record<number, string>>({});
   const [videoUrls, setVideoUrls] = useState<Record<string, string>>({});
-  const [youtubeTitle, setYoutubeTitle] = useState('');
-  const [youtubeDesc, setYoutubeDesc] = useState('');
+
+  // Per-output metadata state
+  const [metadata, setMetadata] = useState<Record<string, OutputMetadata>>({});
+  const [suggesting, setSuggesting] = useState<Record<string, boolean>>({});
   const [uploading, setUploading] = useState<string | null>(null);
+  const [uploadStatus, setUploadStatus] = useState<Record<string, string>>({});
+  const [newTag, setNewTag] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!id) return;
@@ -34,6 +49,18 @@ const LongVideoOutputComponent: React.FC = () => {
       setOutputs(outputList);
       setLoading(false);
 
+      // Initialize metadata from existing output records
+      const initialMeta: Record<string, OutputMetadata> = {};
+      for (const output of outputList) {
+        initialMeta[output.id] = {
+          title: output.title || '',
+          description: output.description || '',
+          tags: output.tags ? JSON.parse(output.tags) : [],
+          playlistName: '',
+        };
+      }
+      setMetadata(initialMeta);
+
       // Load video URLs
       const urls: Record<string, string> = {};
       for (const output of outputList) {
@@ -47,8 +74,60 @@ const LongVideoOutputComponent: React.FC = () => {
         }
       }
       setVideoUrls(urls);
+
+      // Auto-suggest metadata for outputs without titles
+      for (const output of outputList) {
+        if (!output.title) {
+          handleSuggest(output, id);
+        }
+      }
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  const handleSuggest = async (output: LongVideoOutput, videoId: string) => {
+    setSuggesting(prev => ({ ...prev, [output.id]: true }));
+    try {
+      const result = await suggestVideoMetadata(videoId, output.presenterNumber);
+      if (result.data) {
+        const suggested = JSON.parse(result.data);
+        setMetadata(prev => ({
+          ...prev,
+          [output.id]: {
+            title: suggested.title || prev[output.id]?.title || '',
+            description: suggested.description || prev[output.id]?.description || '',
+            tags: suggested.tags || prev[output.id]?.tags || [],
+            playlistName: suggested.playlistName || prev[output.id]?.playlistName || '',
+          },
+        }));
+      }
+    } catch (error) {
+      console.error('Suggest error:', error);
+    }
+    setSuggesting(prev => ({ ...prev, [output.id]: false }));
+  };
+
+  const updateMeta = (outputId: string, field: keyof OutputMetadata, value: string | string[]) => {
+    setMetadata(prev => ({
+      ...prev,
+      [outputId]: { ...prev[outputId], [field]: value },
+    }));
+  };
+
+  const handleAddTag = (outputId: string) => {
+    const tag = (newTag[outputId] || '').trim();
+    if (!tag) return;
+    const current = metadata[outputId]?.tags || [];
+    if (!current.includes(tag)) {
+      updateMeta(outputId, 'tags', [...current, tag]);
+    }
+    setNewTag(prev => ({ ...prev, [outputId]: '' }));
+  };
+
+  const handleRemoveTag = (outputId: string, index: number) => {
+    const current = metadata[outputId]?.tags || [];
+    updateMeta(outputId, 'tags', current.filter((_, i) => i !== index));
+  };
 
   const handleDownload = (outputId: string) => {
     const url = videoUrls[outputId];
@@ -58,107 +137,209 @@ const LongVideoOutputComponent: React.FC = () => {
   };
 
   const handleYouTubeUpload = async (output: LongVideoOutput) => {
+    const meta = metadata[output.id];
+    if (!meta?.title) {
+      setUploadStatus(prev => ({ ...prev, [output.id]: 'error:Title is required' }));
+      return;
+    }
+
     setUploading(output.id);
+    setUploadStatus(prev => ({ ...prev, [output.id]: 'uploading' }));
+
     try {
-      const title = youtubeTitle || output.title || `${presenterNames[output.presenterNumber]} Presentation`;
-      await uploadToYouTube(output.id, title, youtubeDesc || output.description || undefined);
+      await uploadToYouTube(
+        output.id,
+        meta.title,
+        meta.description || undefined,
+        meta.tags.length > 0 ? JSON.stringify(meta.tags) : undefined,
+        meta.playlistName || undefined
+      );
+      setUploadStatus(prev => ({ ...prev, [output.id]: 'success' }));
     } catch (error) {
       console.error('YouTube upload error:', error);
+      setUploadStatus(prev => ({ ...prev, [output.id]: 'error:Upload failed' }));
     }
     setUploading(null);
   };
 
   if (loading) {
-    return <Box textAlign="center"><Spinner size="large" /></Box>;
+    return <Box textAlign="center" padding="xxl"><Spinner size="large" /></Box>;
   }
 
   if (outputs.length === 0) {
     return (
       <Container header={<Header variant="h2">Long Video Outputs</Header>}>
-        <Alert type="info">No outputs generated yet. Go to the editor to generate videos.</Alert>
+        <Alert type="info">
+          No outputs generated yet.{' '}
+          <Button variant="link" onClick={() => navigate(`/longvideo/edit/${id}`)}>
+            Go to the editor
+          </Button>{' '}
+          to generate videos.
+        </Alert>
       </Container>
     );
   }
 
   return (
     <SpaceBetween size="l">
-      <Header variant="h2">Long Video Outputs</Header>
+      <Header variant="h1">Video Outputs</Header>
 
-      <Cards
-        cardDefinition={{
-          header: (item) => (
-            <Header>{presenterNames[item.presenterNumber] || `Presenter ${item.presenterNumber}`}</Header>
-          ),
-          sections: [
-            {
-              id: "video",
-              content: (item) => (
-                videoUrls[item.id] ? (
+      {outputs
+        .sort((a, b) => a.presenterNumber - b.presenterNumber)
+        .map((output) => {
+          const meta = metadata[output.id] || { title: '', description: '', tags: [], playlistName: '' };
+          const isSuggesting = suggesting[output.id] || false;
+          const status = uploadStatus[output.id] || '';
+
+          return (
+            <Container
+              key={output.id}
+              header={
+                <Header
+                  variant="h2"
+                  actions={
+                    <SpaceBetween size="xs" direction="horizontal">
+                      <Button
+                        iconName="download"
+                        onClick={() => handleDownload(output.id)}
+                        disabled={!videoUrls[output.id]}
+                      >
+                        Download
+                      </Button>
+                      <Button
+                        iconName="refresh"
+                        onClick={() => handleSuggest(output, id!)}
+                        loading={isSuggesting}
+                      >
+                        AI Suggest
+                      </Button>
+                    </SpaceBetween>
+                  }
+                >
+                  {presenterNames[output.presenterNumber] || `Presenter ${output.presenterNumber}`}
+                </Header>
+              }
+            >
+              <SpaceBetween size="l">
+                {/* Video Preview */}
+                {videoUrls[output.id] ? (
                   <video
-                    src={videoUrls[item.id]}
+                    src={videoUrls[output.id]}
                     controls
-                    style={{ width: '100%', maxHeight: '300px' }}
+                    style={{ width: '100%', maxHeight: '360px', borderRadius: '8px' }}
                   />
                 ) : (
                   <Box textAlign="center" padding="l">
                     <Spinner /> Loading video...
                   </Box>
-                )
-              ),
-            },
-            {
-              id: "info",
-              header: "Details",
-              content: (item) => (
-                <SpaceBetween size="xs">
-                  <div><strong>Title:</strong> {item.title || '-'}</div>
-                  <div><strong>YouTube ID:</strong> {item.youtubeVideoId || 'Not uploaded'}</div>
-                </SpaceBetween>
-              ),
-            },
-            {
-              id: "actions",
-              content: (item) => (
-                <SpaceBetween size="s">
-                  <Button
-                    variant="primary"
-                    onClick={() => handleDownload(item.id)}
-                    disabled={!videoUrls[item.id]}
-                    iconName="download"
-                  >
-                    Download
-                  </Button>
-                  <SpaceBetween size="xs">
-                    <FormField label="YouTube Title">
+                )}
+
+                {/* YouTube Upload ID if exists */}
+                {output.youtubeVideoId && (
+                  <Alert type="success">
+                    Already uploaded to YouTube: <strong>{output.youtubeVideoId}</strong>
+                  </Alert>
+                )}
+
+                {/* Metadata Form */}
+                <ExpandableSection
+                  headerText="YouTube Upload Details"
+                  defaultExpanded={!output.youtubeVideoId}
+                >
+                  <SpaceBetween size="m">
+                    {isSuggesting && (
+                      <Alert type="info">
+                        <Spinner size="normal" /> AI is generating metadata suggestions...
+                      </Alert>
+                    )}
+
+                    <FormField
+                      label="Title"
+                      description="Required. A compelling, SEO-friendly title (max 100 chars)"
+                      constraintText={`${meta.title.length}/100 characters`}
+                      errorText={status.startsWith('error:Title') ? 'Title is required' : undefined}
+                    >
                       <Input
-                        value={youtubeTitle}
-                        onChange={({ detail }) => setYoutubeTitle(detail.value)}
-                        placeholder={item.title || "Video title"}
+                        value={meta.title}
+                        onChange={({ detail }) => updateMeta(output.id, 'title', detail.value)}
+                        placeholder="Enter video title"
                       />
                     </FormField>
-                    <FormField label="YouTube Description">
-                      <Input
-                        value={youtubeDesc}
-                        onChange={({ detail }) => setYoutubeDesc(detail.value)}
-                        placeholder="Video description"
+
+                    <FormField
+                      label="Description"
+                      description="A YouTube description summarizing the presentation"
+                    >
+                      <Textarea
+                        value={meta.description}
+                        onChange={({ detail }) => updateMeta(output.id, 'description', detail.value)}
+                        placeholder="Enter video description"
+                        rows={4}
                       />
                     </FormField>
+
+                    <FormField label="Tags" description="Tags help viewers find your video">
+                      <SpaceBetween size="xs">
+                        <TokenGroup
+                          items={meta.tags.map((tag) => ({ label: tag, dismissLabel: `Remove ${tag}` }))}
+                          onDismiss={({ detail }) => handleRemoveTag(output.id, detail.itemIndex)}
+                        />
+                        <ColumnLayout columns={2}>
+                          <Input
+                            value={newTag[output.id] || ''}
+                            onChange={({ detail }) => setNewTag(prev => ({ ...prev, [output.id]: detail.value }))}
+                            placeholder="Add a tag"
+                            onKeyDown={({ detail }) => {
+                              if (detail.key === 'Enter') handleAddTag(output.id);
+                            }}
+                          />
+                          <Button onClick={() => handleAddTag(output.id)} iconName="add-plus">
+                            Add Tag
+                          </Button>
+                        </ColumnLayout>
+                      </SpaceBetween>
+                    </FormField>
+
+                    <FormField
+                      label="Playlist"
+                      description="Videos will be added to this playlist (created if it doesn't exist)"
+                    >
+                      <Input
+                        value={meta.playlistName}
+                        onChange={({ detail }) => updateMeta(output.id, 'playlistName', detail.value)}
+                        placeholder="Enter playlist name"
+                      />
+                    </FormField>
+
+                    {/* Upload Status */}
+                    {status === 'success' && (
+                      <StatusIndicator type="success">Upload started successfully</StatusIndicator>
+                    )}
+                    {status.startsWith('error:') && status !== 'error:Title is required' && (
+                      <StatusIndicator type="error">{status.replace('error:', '')}</StatusIndicator>
+                    )}
+
                     <Button
-                      onClick={() => handleYouTubeUpload(item)}
-                      loading={uploading === item.id}
+                      variant="primary"
+                      onClick={() => handleYouTubeUpload(output)}
+                      loading={uploading === output.id}
                       iconName="upload"
+                      disabled={!meta.title}
                     >
                       Upload to YouTube
                     </Button>
                   </SpaceBetween>
-                </SpaceBetween>
-              ),
-            },
-          ],
-        }}
-        items={outputs}
-        cardsPerRow={[{ cards: 1 }, { minWidth: 600, cards: 2 }]}
-      />
+                </ExpandableSection>
+              </SpaceBetween>
+            </Container>
+          );
+        })}
+
+      <Box>
+        <Button variant="link" onClick={() => navigate(`/longvideo/edit/${id}`)}>
+          Back to Editor
+        </Button>
+      </Box>
     </SpaceBetween>
   );
 };

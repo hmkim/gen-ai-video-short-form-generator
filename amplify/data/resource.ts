@@ -23,6 +23,12 @@ export const uploadToYouTubeFunction = defineFunction({
   resourceGroupName: "data"
 });
 
+export const suggestVideoMetadataFunction = defineFunction({
+  entry: "./suggestVideoMetadata.ts",
+  resourceGroupName: "data",
+  timeoutSeconds: 120,
+});
+
 const schema = a.schema({
   History: a
     .model({
@@ -94,6 +100,7 @@ const schema = a.schema({
       youtubeVideoId: a.string(),
       title: a.string(),
       description: a.string(),
+      tags: a.string(),
       longVideoEdit: a.belongsTo("LongVideoEdit", "longVideoEditId"),
     })
     .authorization((allow) => [allow.owner()]),
@@ -177,10 +184,21 @@ const schema = a.schema({
       outputId: a.string().required(),
       title: a.string().required(),
       description: a.string(),
+      tags: a.string(),
+      playlistName: a.string(),
     })
     .returns(a.string())
     .authorization((allow) => [allow.authenticated()])
     .handler(a.handler.function(uploadToYouTubeFunction)),
+
+  suggestVideoMetadata: a.query()
+    .arguments({
+      videoId: a.string().required(),
+      presenterNumber: a.integer().required(),
+    })
+    .returns(a.string())
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(suggestVideoMetadataFunction)),
 
 });
 

@@ -19,6 +19,8 @@ def lambda_handler(event, context):
     output_id = event['outputId']
     title = event['title']
     description = event.get('description', '')
+    tags = event.get('tags', [])  # list of strings
+    playlist_name = event.get('playlistName', '')
 
     output_table = dynamodb.Table(output_table_name)
 
@@ -53,12 +55,16 @@ def lambda_handler(event, context):
 
         youtube = build('youtube', 'v3', credentials=creds)
 
+        snippet = {
+            'title': title,
+            'description': description,
+            'categoryId': '22',  # People & Blogs
+        }
+        if tags:
+            snippet['tags'] = tags if isinstance(tags, list) else json.loads(tags)
+
         body = {
-            'snippet': {
-                'title': title,
-                'description': description,
-                'categoryId': '22',  # People & Blogs
-            },
+            'snippet': snippet,
             'status': {
                 'privacyStatus': 'private',
             }
@@ -83,6 +89,13 @@ def lambda_handler(event, context):
 
         youtube_video_id = response['id']
 
+        # Add to playlist if specified
+        if playlist_name and youtube_video_id:
+            try:
+                add_to_playlist(youtube, playlist_name, youtube_video_id)
+            except Exception as pe:
+                print(f"Error adding to playlist: {str(pe)}")
+
         # Update DDB with YouTube video ID
         output_table.update_item(
             Key={'id': output_id},
@@ -98,7 +111,7 @@ def lambda_handler(event, context):
             'youtubeVideoId': youtube_video_id,
         }
 
-    except ImportError:
+    except ImportError as ie:
         # google-api-python-client not available yet
         return {
             'statusCode': 500,
@@ -110,3 +123,42 @@ def lambda_handler(event, context):
             'statusCode': 500,
             'error': str(e),
         }
+
+
+def add_to_playlist(youtube, playlist_name, video_id):
+    """Find or create a playlist by name, then add the video to it."""
+    # Search for existing playlist
+    playlists_response = youtube.playlists().list(
+        part='snippet', mine=True, maxResults=50
+    ).execute()
+
+    playlist_id = None
+    for pl in playlists_response.get('items', []):
+        if pl['snippet']['title'] == playlist_name:
+            playlist_id = pl['id']
+            break
+
+    # Create playlist if not found
+    if not playlist_id:
+        create_response = youtube.playlists().insert(
+            part='snippet,status',
+            body={
+                'snippet': {'title': playlist_name},
+                'status': {'privacyStatus': 'private'},
+            }
+        ).execute()
+        playlist_id = create_response['id']
+
+    # Add video to playlist
+    youtube.playlistItems().insert(
+        part='snippet',
+        body={
+            'snippet': {
+                'playlistId': playlist_id,
+                'resourceId': {
+                    'kind': 'youtube#video',
+                    'videoId': video_id,
+                }
+            }
+        }
+    ).execute()
