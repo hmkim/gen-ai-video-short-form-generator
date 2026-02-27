@@ -6,14 +6,14 @@ const client = generateClient<Schema>({ authMode: 'userPool' });
 export const exchangeYouTubeToken = async (
   code: string,
   redirectUri: string,
-  clientId: string,
-  clientSecret: string
+  clientId?: string,
+  clientSecret?: string
 ) => {
   return await client.queries.exchangeYouTubeToken({
     code,
     redirectUri,
-    clientId,
-    clientSecret,
+    clientId: clientId || undefined,
+    clientSecret: clientSecret || undefined,
   });
 };
 

@@ -117,6 +117,7 @@ export const handler: Schema["checkYouTubeConnection"]["functionHandler"] = asyn
         email: creds.account_email || "",
         name: creds.account_name || "",
         picture: creds.account_picture || "",
+        clientId: creds.client_id || "",
         channels,
         selectedChannelId: creds.selected_channel_id || "",
       });

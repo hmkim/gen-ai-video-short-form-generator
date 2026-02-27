@@ -225,8 +225,8 @@ const schema = a.schema({
     .arguments({
       code: a.string().required(),
       redirectUri: a.string().required(),
-      clientId: a.string().required(),
-      clientSecret: a.string().required(),
+      clientId: a.string(),
+      clientSecret: a.string(),
     })
     .returns(a.string())
     .authorization((allow) => [allow.authenticated()])

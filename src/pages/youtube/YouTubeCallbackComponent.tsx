@@ -26,15 +26,10 @@ const YouTubeCallbackComponent: React.FC = () => {
       return;
     }
 
-    // Get credentials from localStorage (saved in YouTubeConnectComponent)
-    const clientId = localStorage.getItem('yt_client_id') || '';
-    const clientSecret = localStorage.getItem('yt_client_secret') || '';
-
-    if (!clientId || !clientSecret) {
-      setError('Client credentials not found. Please go back to YouTube Settings and try again.');
-      setProcessing(false);
-      return;
-    }
+    // Get credentials from localStorage if available (first-time setup)
+    // For reconnect, backend will use stored credentials from Secrets Manager
+    const clientId = localStorage.getItem('yt_client_id') || undefined;
+    const clientSecret = localStorage.getItem('yt_client_secret') || undefined;
 
     const redirectUri = `${window.location.origin}/youtube/callback`;
 

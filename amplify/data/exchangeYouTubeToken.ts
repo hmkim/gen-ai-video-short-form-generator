@@ -12,9 +12,33 @@ const SECRET_ID = "youtube-oauth-credentials";
 export const handler: Schema["exchangeYouTubeToken"]["functionHandler"] = async (
   event
 ) => {
-  const { code, redirectUri, clientId, clientSecret } = event.arguments;
+  const { code, redirectUri } = event.arguments;
+  let { clientId, clientSecret } = event.arguments;
 
   try {
+    // If clientId/clientSecret not provided, read from existing Secrets Manager credentials (reconnect flow)
+    if (!clientId || !clientSecret) {
+      try {
+        const existingSecret = await secretsManager.send(
+          new GetSecretValueCommand({ SecretId: SECRET_ID })
+        );
+        if (existingSecret.SecretString) {
+          const existing = JSON.parse(existingSecret.SecretString);
+          clientId = clientId || existing.client_id || "";
+          clientSecret = clientSecret || existing.client_secret || "";
+        }
+      } catch {
+        // No existing secret — clientId/clientSecret are required for first-time setup
+      }
+
+      if (!clientId || !clientSecret) {
+        return JSON.stringify({
+          success: false,
+          error: "Client credentials not found. Please set up YouTube connection first.",
+        });
+      }
+    }
+
     // Exchange authorization code for tokens using Google's token endpoint
     const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",

@@ -23,6 +23,7 @@ interface YouTubeChannel {
 const YouTubeConnectComponent: React.FC = () => {
   const [clientId, setClientId] = useState(() => localStorage.getItem('yt_client_id') || '');
   const [clientSecret, setClientSecret] = useState(() => localStorage.getItem('yt_client_secret') || '');
+  const [storedClientId, setStoredClientId] = useState<string>('');
   const [connected, setConnected] = useState<boolean | null>(null);
   const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
   const [channels, setChannels] = useState<YouTubeChannel[]>([]);
@@ -51,6 +52,9 @@ const YouTubeConnectComponent: React.FC = () => {
         const parsed = JSON.parse(result.data);
         setConnected(parsed.connected);
         if (parsed.connected) {
+          if (parsed.clientId) {
+            setStoredClientId(parsed.clientId);
+          }
           if (parsed.email || parsed.name) {
             setAccountInfo({
               email: parsed.email || '',
@@ -73,25 +77,10 @@ const YouTubeConnectComponent: React.FC = () => {
     setChecking(false);
   };
 
-  const handleConnect = () => {
-    const envClientId = import.meta.env.VITE_YOUTUBE_CLIENT_ID || clientId;
-
-    if (!envClientId) {
-      alert('Please enter a YouTube Client ID.');
-      return;
-    }
-
-    if (!clientSecret && !import.meta.env.VITE_YOUTUBE_CLIENT_SECRET) {
-      alert('Please enter a YouTube Client Secret.');
-      return;
-    }
-
-    localStorage.setItem('yt_client_id', envClientId);
-    localStorage.setItem('yt_client_secret', import.meta.env.VITE_YOUTUBE_CLIENT_SECRET || clientSecret);
-
+  const startOAuthFlow = (oauthClientId: string) => {
     const redirectUri = `${window.location.origin}/youtube/callback`;
     const params = new URLSearchParams({
-      client_id: envClientId,
+      client_id: oauthClientId,
       redirect_uri: redirectUri,
       response_type: 'code',
       scope: SCOPES,
@@ -100,6 +89,38 @@ const YouTubeConnectComponent: React.FC = () => {
     });
 
     window.location.href = `${YOUTUBE_AUTH_URL}?${params.toString()}`;
+  };
+
+  const handleConnect = () => {
+    const envClientId = import.meta.env.VITE_YOUTUBE_CLIENT_ID || clientId;
+
+    if (!envClientId) {
+      showFlash('error', 'Please enter a YouTube Client ID.');
+      return;
+    }
+
+    if (!clientSecret && !import.meta.env.VITE_YOUTUBE_CLIENT_SECRET) {
+      showFlash('error', 'Please enter a YouTube Client Secret.');
+      return;
+    }
+
+    localStorage.setItem('yt_client_id', envClientId);
+    localStorage.setItem('yt_client_secret', import.meta.env.VITE_YOUTUBE_CLIENT_SECRET || clientSecret);
+
+    startOAuthFlow(envClientId);
+  };
+
+  const handleReconnect = () => {
+    // Use stored clientId from backend (Secrets Manager) or localStorage
+    const oauthClientId = storedClientId || localStorage.getItem('yt_client_id') || '';
+
+    if (!oauthClientId) {
+      showFlash('error', 'Client ID not found. Please disconnect and set up again.');
+      return;
+    }
+
+    // For reconnect, backend will use stored client_secret from Secrets Manager
+    startOAuthFlow(oauthClientId);
   };
 
   const handleSaveChannel = async (channelId: string) => {
@@ -241,11 +262,17 @@ const YouTubeConnectComponent: React.FC = () => {
                         </div>
                       </SpaceBetween>
                     </FormField>
+                    {channels.length === 1 && (
+                      <Alert type="info">
+                        Only channels linked to the connected Google account are shown.
+                        If you have a Brand Account channel, click <strong>Reconnect</strong> and select the Brand Account during the Google sign-in screen.
+                      </Alert>
+                    )}
                   </SpaceBetween>
                 </Container>
               )}
 
-              <Button onClick={handleConnect}>
+              <Button onClick={handleReconnect}>
                 Reconnect YouTube Account
               </Button>
             </>
