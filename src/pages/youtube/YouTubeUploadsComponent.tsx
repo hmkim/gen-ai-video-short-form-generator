@@ -231,6 +231,7 @@ const YouTubeUploadsComponent: React.FC = () => {
             cell: (item) => (
               <ButtonDropdown
                 variant="inline-icon"
+                expandToViewport
                 items={[
                   ...(item.longVideoEditId
                     ? [{ id: 'view', text: 'View output' }]
