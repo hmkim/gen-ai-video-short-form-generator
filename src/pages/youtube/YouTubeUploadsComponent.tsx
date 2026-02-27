@@ -4,10 +4,15 @@ import {
   Table, StatusIndicator, Alert, Modal, Flashbar, Link,
 } from '@cloudscape-design/components';
 import { useNavigate } from 'react-router-dom';
-import { fetchAllOutputs, LongVideoOutput, client } from '../../apis/longVideoOutput';
+import { generateClient } from 'aws-amplify/data';
+import type { Schema } from '../../../amplify/data/resource';
 import { readLongVideoEdit } from '../../apis/longVideoEdit';
 
-interface UploadEntry extends LongVideoOutput {
+const client = generateClient<Schema>({ authMode: 'userPool' });
+
+type YouTubeUploadRecord = Schema["YouTubeUpload"]["type"];
+
+interface UploadEntry extends YouTubeUploadRecord {
   presenterName?: string;
   videoName?: string;
 }
@@ -37,19 +42,14 @@ const YouTubeUploadsComponent: React.FC = () => {
   const loadUploads = useCallback(async () => {
     setLoading(true);
     try {
-      const allOutputs = await fetchAllOutputs();
-
-      // Filter to only outputs that have upload activity (youtubeVideoId or uploadStatus)
-      const relevant = allOutputs.filter(
-        (o) => o.youtubeVideoId || o.uploadStatus
-      );
+      const { data: records } = await client.models.YouTubeUpload.list();
 
       // Enrich with edit metadata
       const editCache: Record<string, { videoName?: string; p1?: string; p2?: string }> = {};
       const enriched: UploadEntry[] = [];
 
-      for (const output of relevant) {
-        const editId = output.longVideoEditId;
+      for (const record of records) {
+        const editId = record.longVideoEditId;
         if (editId && !editCache[editId]) {
           const edit = await readLongVideoEdit(editId);
           editCache[editId] = {
@@ -61,9 +61,9 @@ const YouTubeUploadsComponent: React.FC = () => {
 
         const editInfo = editId ? editCache[editId] : undefined;
         enriched.push({
-          ...output,
+          ...record,
           presenterName:
-            output.presenterNumber === 1
+            record.presenterNumber === 1
               ? editInfo?.p1
               : editInfo?.p2,
           videoName: editInfo?.videoName?.replace(/\.[^.]+$/, '') || '',
@@ -111,26 +111,22 @@ const YouTubeUploadsComponent: React.FC = () => {
     return <StatusIndicator type="pending">Unknown</StatusIndicator>;
   };
 
-  const handleDeleteFromYouTube = async (upload: UploadEntry) => {
-    if (!upload.youtubeVideoId) return;
+  const handleRemoveRecord = async (upload: UploadEntry) => {
     setConfirmDelete(null);
     setDeleting(upload.id);
 
     try {
-      // Clear the DDB fields and inform the user to delete manually from YouTube Studio
-      await client.models.LongVideoOutput.update({
-        id: upload.id,
-        youtubeVideoId: null,
-        youtubeChannelTitle: null,
-        uploadStatus: null,
-        uploadError: null,
-        uploadStartedAt: null,
-      });
-      showFlash('success', `YouTube record cleared. Video ID: ${upload.youtubeVideoId} — please delete manually from YouTube Studio if needed.`);
+      await client.models.YouTubeUpload.delete({ id: upload.id });
+      showFlash(
+        'success',
+        upload.youtubeVideoId
+          ? `Upload record removed. YouTube video (${upload.youtubeVideoId}) must be deleted separately from YouTube Studio.`
+          : 'Upload record removed.'
+      );
       loadUploads();
     } catch (error) {
       console.error('Delete error:', error);
-      showFlash('error', 'Failed to delete YouTube video');
+      showFlash('error', 'Failed to remove upload record');
     }
     setDeleting(null);
   };
@@ -245,15 +241,13 @@ const YouTubeUploadsComponent: React.FC = () => {
                     View
                   </Button>
                 )}
-                {item.youtubeVideoId && (
-                  <Button
-                    variant="inline-link"
-                    onClick={() => setConfirmDelete(item)}
-                    loading={deleting === item.id}
-                  >
-                    Remove
-                  </Button>
-                )}
+                <Button
+                  variant="inline-link"
+                  onClick={() => setConfirmDelete(item)}
+                  loading={deleting === item.id}
+                >
+                  Remove
+                </Button>
               </div>
             ),
             width: 160,
@@ -275,7 +269,7 @@ const YouTubeUploadsComponent: React.FC = () => {
       <Modal
         visible={confirmDelete !== null}
         onDismiss={() => setConfirmDelete(null)}
-        header="Remove YouTube Upload?"
+        header="Remove Upload Record?"
         footer={
           <Box float="right">
             <SpaceBetween size="xs" direction="horizontal">
@@ -284,7 +278,7 @@ const YouTubeUploadsComponent: React.FC = () => {
               </Button>
               <Button
                 variant="primary"
-                onClick={() => confirmDelete && handleDeleteFromYouTube(confirmDelete)}
+                onClick={() => confirmDelete && handleRemoveRecord(confirmDelete)}
               >
                 Remove
               </Button>
@@ -294,14 +288,14 @@ const YouTubeUploadsComponent: React.FC = () => {
       >
         <SpaceBetween size="s">
           <Box>
-            This will clear the YouTube upload record for{' '}
+            This will remove the upload record for{' '}
             <strong>{confirmDelete?.title || 'this video'}</strong>.
           </Box>
           {confirmDelete?.youtubeVideoId && (
             <Alert type="warning">
               YouTube Video ID: <strong>{confirmDelete.youtubeVideoId}</strong>
               <br />
-              The video on YouTube will need to be deleted separately from{' '}
+              The video on YouTube must be deleted separately from{' '}
               <Link
                 href="https://studio.youtube.com"
                 external

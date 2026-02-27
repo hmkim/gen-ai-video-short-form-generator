@@ -8,6 +8,7 @@ import { Effect, PolicyStatement } from 'aws-cdk-lib/aws-iam';
 type YouTubeUploadProps = {
   bucket: IBucket,
   longVideoOutputTable: ITable,
+  youtubeUploadTable: ITable,
 };
 
 export class YouTubeUpload extends Construct {
@@ -28,6 +29,7 @@ export class YouTubeUpload extends Construct {
       environment: {
         BUCKET_NAME: props.bucket.bucketName,
         LONG_VIDEO_OUTPUT_TABLE_NAME: props.longVideoOutputTable.tableName,
+        YOUTUBE_UPLOAD_TABLE_NAME: props.youtubeUploadTable.tableName,
       },
       timeout: Duration.seconds(900),
       memorySize: 1024,
@@ -36,6 +38,7 @@ export class YouTubeUpload extends Construct {
 
     props.bucket.grantRead(this.handler);
     props.longVideoOutputTable.grantReadWriteData(this.handler);
+    props.youtubeUploadTable.grantReadWriteData(this.handler);
     this.handler.addToRolePolicy(
       new PolicyStatement({
         effect: Effect.ALLOW,

@@ -8,8 +8,28 @@ dynamodb = boto3.resource('dynamodb')
 secrets_manager = boto3.client('secretsmanager')
 
 
-def update_upload_status(output_table, output_id, status, error='', youtube_video_id=None, channel_title=None):
-    """Update upload status in DDB."""
+def update_upload_record(upload_table, record_id, status, error='', youtube_video_id=None, channel_title=None):
+    """Update upload status in YouTubeUpload table."""
+    update_expr = 'SET uploadStatus = :s, uploadError = :e, updatedAt = :u'
+    expr_values = {':s': status, ':e': error, ':u': _now()}
+
+    if youtube_video_id:
+        update_expr += ', youtubeVideoId = :vid'
+        expr_values[':vid'] = youtube_video_id
+
+    if channel_title:
+        update_expr += ', youtubeChannelTitle = :ch'
+        expr_values[':ch'] = channel_title
+
+    upload_table.update_item(
+        Key={'id': record_id},
+        UpdateExpression=update_expr,
+        ExpressionAttributeValues=expr_values
+    )
+
+
+def update_output_status(output_table, output_id, status, error='', youtube_video_id=None, channel_title=None):
+    """Update LongVideoOutput for backward compat (output page status)."""
     update_expr = 'SET uploadStatus = :s, uploadError = :e'
     expr_values = {':s': status, ':e': error}
 
@@ -28,32 +48,39 @@ def update_upload_status(output_table, output_id, status, error='', youtube_vide
     )
 
 
+def _now():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
 def lambda_handler(event, context):
     """
     Upload a video to YouTube using the YouTube Data API v3.
     Supports 'upload' (default) and 'delete' actions.
-    Requires google-api-python-client and google-auth-oauthlib Lambda layer.
     """
     bucket_name = os.environ["BUCKET_NAME"]
     output_table_name = os.environ["LONG_VIDEO_OUTPUT_TABLE_NAME"]
+    upload_table_name = os.environ["YOUTUBE_UPLOAD_TABLE_NAME"]
     output_table = dynamodb.Table(output_table_name)
+    upload_table = dynamodb.Table(upload_table_name)
 
     action = event.get('action', 'upload')
 
     if action == 'delete':
         return handle_delete(event, output_table)
 
-    return handle_upload(event, bucket_name, output_table)
+    return handle_upload(event, bucket_name, output_table, upload_table)
 
 
-def handle_upload(event, bucket_name, output_table):
+def handle_upload(event, bucket_name, output_table, upload_table):
     output_id = event['outputId']
+    upload_record_id = event.get('uploadRecordId', '')
     title = event['title']
     description = event.get('description', '')
     tags = event.get('tags', [])
     playlist_name = event.get('playlistName', '')
 
-    # Get output record
+    # Get output record for S3 location
     output_record = output_table.get_item(Key={'id': output_id})
     item = output_record['Item']
     s3_location = item['s3Location']
@@ -125,10 +152,16 @@ def handle_upload(event, bucket_name, output_table):
             except Exception as pe:
                 print(f"Error adding to playlist: {str(pe)}")
 
-        # Update DDB with YouTube video ID, channel title and status
-        update_upload_status(output_table, output_id, 'completed',
-                            youtube_video_id=youtube_video_id,
-                            channel_title=channel_title)
+        # Update YouTubeUpload record
+        if upload_record_id:
+            update_upload_record(upload_table, upload_record_id, 'completed',
+                                youtube_video_id=youtube_video_id,
+                                channel_title=channel_title)
+
+        # Update LongVideoOutput for backward compat
+        update_output_status(output_table, output_id, 'completed',
+                             youtube_video_id=youtube_video_id,
+                             channel_title=channel_title)
 
         # Clean up
         os.unlink(local_file.name)
@@ -140,12 +173,16 @@ def handle_upload(event, bucket_name, output_table):
 
     except ImportError:
         error_msg = 'YouTube API dependencies not installed. Add google-api-python-client Lambda layer.'
-        update_upload_status(output_table, output_id, 'failed', error=error_msg)
+        if upload_record_id:
+            update_upload_record(upload_table, upload_record_id, 'failed', error=error_msg)
+        update_output_status(output_table, output_id, 'failed', error=error_msg)
         return {'statusCode': 500, 'error': error_msg}
     except Exception as e:
         error_msg = str(e)
         print(f"Error uploading to YouTube: {error_msg}")
-        update_upload_status(output_table, output_id, 'failed', error=error_msg)
+        if upload_record_id:
+            update_upload_record(upload_table, upload_record_id, 'failed', error=error_msg)
+        update_output_status(output_table, output_id, 'failed', error=error_msg)
         return {'statusCode': 500, 'error': error_msg}
 
 
@@ -177,10 +214,10 @@ def handle_delete(event, output_table):
         youtube = build('youtube', 'v3', credentials=creds)
         youtube.videos().delete(id=youtube_video_id).execute()
 
-        # Clear YouTube reference in DDB
+        # Clear YouTube reference in LongVideoOutput
         output_table.update_item(
             Key={'id': output_id},
-            UpdateExpression='REMOVE youtubeVideoId, uploadStatus, uploadError, uploadStartedAt',
+            UpdateExpression='REMOVE youtubeVideoId, uploadStatus, uploadError, uploadStartedAt, youtubeChannelTitle',
         )
 
         return {'statusCode': 200, 'message': f'Deleted {youtube_video_id}'}

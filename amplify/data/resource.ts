@@ -120,12 +120,28 @@ const schema = a.schema({
       title: a.string(),
       description: a.string(),
       tags: a.string(),
-      uploadStatus: a.string(), // 'uploading' | 'completed' | 'failed' | 'cancelled'
+      uploadStatus: a.string(),
       uploadError: a.string(),
       uploadStartedAt: a.string(),
       longVideoEdit: a.belongsTo("LongVideoEdit", "longVideoEditId"),
     })
     .authorization((allow) => [allow.owner()]),
+
+  YouTubeUpload: a
+    .model({
+      longVideoOutputId: a.id().required(),
+      longVideoEditId: a.id(),
+      presenterNumber: a.integer(),
+      youtubeVideoId: a.string(),
+      youtubeChannelTitle: a.string(),
+      title: a.string(),
+      description: a.string(),
+      tags: a.string(),
+      uploadStatus: a.string(),
+      uploadError: a.string(),
+      uploadStartedAt: a.string(),
+    })
+    .authorization((allow) => [allow.authenticated()]),
 
   StageChanged: a.customType({
     videoId: a.string().required(),

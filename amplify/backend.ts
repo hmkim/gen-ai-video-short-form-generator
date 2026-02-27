@@ -48,6 +48,7 @@ const galleryTable = backend.data.resources.tables["Gallery"]
 const longVideoEditTable = backend.data.resources.tables["LongVideoEdit"]
 const longVideoSegmentTable = backend.data.resources.tables["LongVideoSegment"]
 const longVideoOutputTable = backend.data.resources.tables["LongVideoOutput"]
+const youtubeUploadTable = backend.data.resources.tables["YouTubeUpload"]
 
 // Create EventBridge resources first
 const eventStack = backend.createStack("EventBridgeStack");
@@ -331,6 +332,7 @@ const youtubeUploadStack = backend.uploadToYouTubeFunction.stack;
 const youtubeUpload = new YouTubeUpload(youtubeUploadStack, "YouTubeUpload", {
   bucket: s3Bucket,
   longVideoOutputTable: longVideoOutputTable,
+  youtubeUploadTable: youtubeUploadTable,
 });
 
 const uploadToYouTubeFunc = backend.uploadToYouTubeFunction.resources;
@@ -346,8 +348,8 @@ uploadToYouTubeFunc.lambda.addToRolePolicy(
 uploadToYouTubeFunc.lambda.addToRolePolicy(
   new PolicyStatement({
     effect: Effect.ALLOW,
-    actions: ["dynamodb:UpdateItem"],
-    resources: [longVideoOutputTable.tableArn],
+    actions: ["dynamodb:GetItem", "dynamodb:UpdateItem", "dynamodb:PutItem"],
+    resources: [longVideoOutputTable.tableArn, youtubeUploadTable.tableArn],
   }),
 );
 
@@ -355,6 +357,7 @@ uploadToYouTubeFunc.cfnResources.cfnFunction.environment = {
   variables: {
     YOUTUBE_UPLOAD_FUNCTION: youtubeUpload.handler.functionName,
     LONG_VIDEO_OUTPUT_TABLE_NAME: longVideoOutputTable.tableName,
+    YOUTUBE_UPLOAD_TABLE_NAME: youtubeUploadTable.tableName,
   }
 };
 
