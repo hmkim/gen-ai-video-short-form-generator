@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   Container, Header, SpaceBetween, Button, Box, Spinner,
   Table, StatusIndicator, Alert, Modal, Flashbar, Link,
+  ButtonDropdown,
 } from '@cloudscape-design/components';
 import { useNavigate } from 'react-router-dom';
 import { generateClient } from 'aws-amplify/data';
@@ -228,29 +229,27 @@ const YouTubeUploadsComponent: React.FC = () => {
             id: 'actions',
             header: 'Actions',
             cell: (item) => (
-              <div style={{ whiteSpace: 'nowrap' }}>
-                {item.longVideoEditId && (
-                  <Button
-                    variant="inline-link"
-                    onClick={() =>
-                      navigate(
-                        `/longvideo/output/${item.longVideoEditId}?presenter=${item.presenterNumber}`
-                      )
-                    }
-                  >
-                    View
-                  </Button>
-                )}
-                <Button
-                  variant="inline-link"
-                  onClick={() => setConfirmDelete(item)}
-                  loading={deleting === item.id}
-                >
-                  Remove
-                </Button>
-              </div>
+              <ButtonDropdown
+                variant="inline-icon"
+                items={[
+                  ...(item.longVideoEditId
+                    ? [{ id: 'view', text: 'View output' }]
+                    : []),
+                  { id: 'remove', text: 'Remove record' },
+                ]}
+                onItemClick={({ detail }) => {
+                  if (detail.id === 'view' && item.longVideoEditId) {
+                    navigate(
+                      `/longvideo/output/${item.longVideoEditId}?presenter=${item.presenterNumber}`
+                    );
+                  } else if (detail.id === 'remove') {
+                    setConfirmDelete(item);
+                  }
+                }}
+                loading={deleting === item.id}
+              />
             ),
-            width: 160,
+            width: 70,
           },
         ]}
         items={uploads}
