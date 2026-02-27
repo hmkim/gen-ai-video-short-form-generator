@@ -116,6 +116,7 @@ const schema = a.schema({
       presenterNumber: a.integer().required(),
       s3Location: a.string(),
       youtubeVideoId: a.string(),
+      youtubeChannelTitle: a.string(),
       title: a.string(),
       description: a.string(),
       tags: a.string(),

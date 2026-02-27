@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   Container, Header, SpaceBetween, Button, Box, Spinner,
-  Table, StatusIndicator, Alert, Modal, Flashbar,
+  Table, StatusIndicator, Alert, Modal, Flashbar, Link,
 } from '@cloudscape-design/components';
 import { useNavigate } from 'react-router-dom';
 import { fetchAllOutputs, LongVideoOutput, client } from '../../apis/longVideoOutput';
@@ -121,6 +121,7 @@ const YouTubeUploadsComponent: React.FC = () => {
       await client.models.LongVideoOutput.update({
         id: upload.id,
         youtubeVideoId: null,
+        youtubeChannelTitle: null,
         uploadStatus: null,
         uploadError: null,
         uploadStartedAt: null,
@@ -176,42 +177,47 @@ const YouTubeUploadsComponent: React.FC = () => {
             id: 'video',
             header: 'Video',
             cell: (item) => item.videoName || '-',
-            width: 200,
+            width: 180,
           },
           {
             id: 'presenter',
             header: 'Presenter',
             cell: (item) => item.presenterName || `Presenter ${item.presenterNumber}`,
-            width: 150,
+            width: 120,
           },
           {
             id: 'title',
             header: 'Title',
             cell: (item) => item.title || '-',
-            width: 250,
+            width: 200,
+          },
+          {
+            id: 'channel',
+            header: 'Channel',
+            cell: (item) => item.youtubeChannelTitle || '-',
+            width: 140,
           },
           {
             id: 'status',
             header: 'Status',
             cell: (item) => getStatusIndicator(item),
-            width: 200,
+            width: 150,
           },
           {
             id: 'youtubeId',
             header: 'YouTube ID',
             cell: (item) =>
               item.youtubeVideoId ? (
-                <a
+                <Link
                   href={`https://www.youtube.com/watch?v=${item.youtubeVideoId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  external
                 >
                   {item.youtubeVideoId}
-                </a>
+                </Link>
               ) : (
                 '-'
               ),
-            width: 150,
+            width: 140,
           },
           {
             id: 'startedAt',
@@ -220,23 +226,13 @@ const YouTubeUploadsComponent: React.FC = () => {
               item.uploadStartedAt
                 ? new Date(item.uploadStartedAt).toLocaleString()
                 : '-',
-            width: 180,
+            width: 160,
           },
           {
             id: 'actions',
             header: 'Actions',
             cell: (item) => (
               <SpaceBetween size="xs" direction="horizontal">
-                {item.youtubeVideoId && (
-                  <Button
-                    variant="normal"
-                    onClick={() => setConfirmDelete(item)}
-                    loading={deleting === item.id}
-                    iconName="remove"
-                  >
-                    Remove
-                  </Button>
-                )}
                 {item.longVideoEditId && (
                   <Button
                     variant="link"
@@ -249,9 +245,18 @@ const YouTubeUploadsComponent: React.FC = () => {
                     View
                   </Button>
                 )}
+                {item.youtubeVideoId && (
+                  <Button
+                    variant="link"
+                    onClick={() => setConfirmDelete(item)}
+                    loading={deleting === item.id}
+                  >
+                    Remove
+                  </Button>
+                )}
               </SpaceBetween>
             ),
-            width: 250,
+            width: 160,
           },
         ]}
         items={uploads}
@@ -264,6 +269,7 @@ const YouTubeUploadsComponent: React.FC = () => {
         }
         stickyHeader
         stripedRows
+        wrapLines={false}
       />
 
       <Modal
@@ -296,13 +302,12 @@ const YouTubeUploadsComponent: React.FC = () => {
               YouTube Video ID: <strong>{confirmDelete.youtubeVideoId}</strong>
               <br />
               The video on YouTube will need to be deleted separately from{' '}
-              <a
+              <Link
                 href="https://studio.youtube.com"
-                target="_blank"
-                rel="noopener noreferrer"
+                external
               >
                 YouTube Studio
-              </a>
+              </Link>
               .
             </Alert>
           )}

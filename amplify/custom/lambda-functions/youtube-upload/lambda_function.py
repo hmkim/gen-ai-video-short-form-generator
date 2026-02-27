@@ -8,7 +8,7 @@ dynamodb = boto3.resource('dynamodb')
 secrets_manager = boto3.client('secretsmanager')
 
 
-def update_upload_status(output_table, output_id, status, error='', youtube_video_id=None):
+def update_upload_status(output_table, output_id, status, error='', youtube_video_id=None, channel_title=None):
     """Update upload status in DDB."""
     update_expr = 'SET uploadStatus = :s, uploadError = :e'
     expr_values = {':s': status, ':e': error}
@@ -16,6 +16,10 @@ def update_upload_status(output_table, output_id, status, error='', youtube_vide
     if youtube_video_id:
         update_expr += ', youtubeVideoId = :vid'
         expr_values[':vid'] = youtube_video_id
+
+    if channel_title:
+        update_expr += ', youtubeChannelTitle = :ch'
+        expr_values[':ch'] = channel_title
 
     output_table.update_item(
         Key={'id': output_id},
@@ -112,6 +116,7 @@ def handle_upload(event, bucket_name, output_table):
             status, response = request.next_chunk()
 
         youtube_video_id = response['id']
+        channel_title = response.get('snippet', {}).get('channelTitle', '')
 
         # Add to playlist if specified
         if playlist_name and youtube_video_id:
@@ -120,9 +125,10 @@ def handle_upload(event, bucket_name, output_table):
             except Exception as pe:
                 print(f"Error adding to playlist: {str(pe)}")
 
-        # Update DDB with YouTube video ID and status
+        # Update DDB with YouTube video ID, channel title and status
         update_upload_status(output_table, output_id, 'completed',
-                            youtube_video_id=youtube_video_id)
+                            youtube_video_id=youtube_video_id,
+                            channel_title=channel_title)
 
         # Clean up
         os.unlink(local_file.name)
