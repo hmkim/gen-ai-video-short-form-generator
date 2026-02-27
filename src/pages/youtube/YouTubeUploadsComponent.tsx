@@ -232,10 +232,10 @@ const YouTubeUploadsComponent: React.FC = () => {
             id: 'actions',
             header: 'Actions',
             cell: (item) => (
-              <SpaceBetween size="xs" direction="horizontal">
+              <div style={{ whiteSpace: 'nowrap' }}>
                 {item.longVideoEditId && (
                   <Button
-                    variant="link"
+                    variant="inline-link"
                     onClick={() =>
                       navigate(
                         `/longvideo/output/${item.longVideoEditId}?presenter=${item.presenterNumber}`
@@ -247,14 +247,14 @@ const YouTubeUploadsComponent: React.FC = () => {
                 )}
                 {item.youtubeVideoId && (
                   <Button
-                    variant="link"
+                    variant="inline-link"
                     onClick={() => setConfirmDelete(item)}
                     loading={deleting === item.id}
                   >
                     Remove
                   </Button>
                 )}
-              </SpaceBetween>
+              </div>
             ),
             width: 160,
           },
