@@ -86,6 +86,18 @@ def handle_upload(event, bucket_name, output_table, upload_table):
     s3_location = item['s3Location']
 
     try:
+        # Verify S3 file exists before proceeding
+        try:
+            s3.head_object(Bucket=bucket_name, Key=s3_location)
+        except s3.exceptions.ClientError as e:
+            if e.response['Error']['Code'] == '404':
+                error_msg = 'Video file not ready yet. MediaConvert may still be processing. Please try again later.'
+                if upload_record_id:
+                    update_upload_record(upload_table, upload_record_id, 'failed', error=error_msg)
+                update_output_status(output_table, output_id, 'failed', error=error_msg)
+                return {'statusCode': 409, 'error': error_msg}
+            raise
+
         # Get YouTube OAuth credentials from Secrets Manager
         secret_response = secrets_manager.get_secret_value(
             SecretId='youtube-oauth-credentials'

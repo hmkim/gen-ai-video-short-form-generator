@@ -397,11 +397,16 @@ const LongVideoOutputComponent: React.FC = () => {
                         onClick={() => handleYouTubeUpload(output)}
                         loading={uploading === output.id}
                         iconName="upload"
-                        disabled={!meta.title}
+                        disabled={!meta.title || !videoUrls[output.id]}
                       >
                         Upload to YouTube
                       </Button>
                     </SpaceBetween>
+                    {!videoUrls[output.id] && (
+                      <StatusIndicator type="warning">
+                        Video file is not ready yet. MediaConvert may still be processing.
+                      </StatusIndicator>
+                    )}
                   </SpaceBetween>
                 </ExpandableSection>
               </SpaceBetween>
