@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Container, Header, Select, FormField, Input } from '@cloudscape-design/components';
+import { Container, Header, Select, FormField, Input, RadioGroup } from '@cloudscape-design/components';
 import { StorageManager } from '@aws-amplify/ui-react-storage';
 import { useNavigate } from 'react-router-dom';
 import { createLongVideoEdit } from '../../apis/longVideoEdit';
@@ -15,6 +15,7 @@ const LongVideoUploadComponent: React.FC = () => {
     label: "Claude 3.7 Sonnet",
     value: "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
   });
+  const [presenterCount, setPresenterCount] = useState(2);
   const [presenter1Name, setPresenter1Name] = useState("Presenter 1");
   const [presenter2Name, setPresenter2Name] = useState("Presenter 2");
   const navigate = useNavigate();
@@ -23,8 +24,9 @@ const LongVideoUploadComponent: React.FC = () => {
     const edit = await createLongVideoEdit(
       key,
       selectedModel.value,
+      presenterCount,
       presenter1Name,
-      presenter2Name
+      presenterCount >= 2 ? presenter2Name : undefined,
     );
 
     return { file, key: `${edit!.id}/LONG_RAW.mp4`, useAccelerateEndpoint: true };
@@ -48,6 +50,16 @@ const LongVideoUploadComponent: React.FC = () => {
         placeholder="Select the LLM model"
       />
       <br />
+      <FormField label="Number of Presenters">
+        <RadioGroup
+          value={String(presenterCount)}
+          onChange={({ detail }) => setPresenterCount(Number(detail.value))}
+          items={[
+            { value: "1", label: "1 Presenter" },
+            { value: "2", label: "2 Presenters" },
+          ]}
+        />
+      </FormField>
       <FormField label="Presenter 1 Name">
         <Input
           value={presenter1Name}
@@ -55,13 +67,15 @@ const LongVideoUploadComponent: React.FC = () => {
           placeholder="Enter presenter 1 name"
         />
       </FormField>
-      <FormField label="Presenter 2 Name">
-        <Input
-          value={presenter2Name}
-          onChange={({ detail }) => setPresenter2Name(detail.value)}
-          placeholder="Enter presenter 2 name"
-        />
-      </FormField>
+      {presenterCount >= 2 && (
+        <FormField label="Presenter 2 Name">
+          <Input
+            value={presenter2Name}
+            onChange={({ detail }) => setPresenter2Name(detail.value)}
+            placeholder="Enter presenter 2 name"
+          />
+        </FormField>
+      )}
       <br />
       <StorageManager
         acceptedFileTypes={['video/*']}

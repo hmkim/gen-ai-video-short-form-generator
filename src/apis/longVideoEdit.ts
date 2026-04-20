@@ -31,15 +31,17 @@ export const fetchLongVideoEdits = async () => {
 export const createLongVideoEdit = async (
   videoName: string,
   modelID: string,
+  presenterCount: number = 2,
   presenter1Name: string = "Presenter 1",
-  presenter2Name: string = "Presenter 2"
+  presenter2Name?: string,
 ) => {
   const { data: newEdit } = await client.models.LongVideoEdit.create({
     videoName,
     modelID,
     stage: 0,
+    presenterCount,
     presenter1Name,
-    presenter2Name,
+    ...(presenterCount >= 2 && presenter2Name ? { presenter2Name } : {}),
   });
   return newEdit;
 };
@@ -48,6 +50,7 @@ export const updateLongVideoEdit = async (
   id: string,
   updates: {
     stage?: number;
+    presenterCount?: number;
     presenter1Name?: string;
     presenter2Name?: string;
   }

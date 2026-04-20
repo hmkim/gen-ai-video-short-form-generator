@@ -123,12 +123,14 @@ export class LongVideoProcessStateMachine extends Construct {
         "uuid.$": "$.uuid",
         "bucket_name.$": "$.bucket_name",
         "owner.$": "$.editInfo.Item.owner.S",
+        "presenterCount.$": "$.editInfo.Item.presenterCount.N",
         "timestamp.$": "$$.State.EnteredTime"
       }),
       resultSelector: {
         "segments.$": "$.Payload.segments",
         "boundaries.$": "$.Payload.boundaries",
-        "speaker_map.$": "$.Payload.speaker_map"
+        "speaker_map.$": "$.Payload.speaker_map",
+        "presenterCount.$": "$.Payload.presenterCount"
       },
       resultPath: "$.boundaryResult"
     });
@@ -140,7 +142,8 @@ export class LongVideoProcessStateMachine extends Construct {
         "uuid.$": "$.uuid",
         "bucket_name.$": "$.bucket_name",
         "segments.$": "$.boundaryResult.segments",
-        "boundaries.$": "$.boundaryResult.boundaries"
+        "boundaries.$": "$.boundaryResult.boundaries",
+        "presenterCount.$": "$.boundaryResult.presenterCount"
       }),
       resultPath: "$.analysisResult"
     });

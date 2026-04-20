@@ -90,8 +90,9 @@ const schema = a.schema({
       videoName: a.string().required(),
       modelID: a.string().required(),
       stage: a.integer().required(),
+      presenterCount: a.integer().default(2),
       presenter1Name: a.string().default("Presenter 1"),
-      presenter2Name: a.string().default("Presenter 2"),
+      presenter2Name: a.string(),
       segments: a.hasMany("LongVideoSegment", "longVideoEditId"),
       outputs: a.hasMany("LongVideoOutput", "longVideoEditId"),
     })

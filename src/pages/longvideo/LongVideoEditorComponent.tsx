@@ -24,6 +24,7 @@ const LongVideoEditorComponent: React.FC = () => {
   const [selectedSegment, setSelectedSegment] = useState<LongVideoSegment | null>(null);
   const [videoUrl, setVideoUrl] = useState<string>('');
   const [totalDuration, setTotalDuration] = useState(0);
+  const [presenterCount, setPresenterCount] = useState(2);
   const [presenter1Name, setPresenter1Name] = useState("Presenter 1");
   const [presenter2Name, setPresenter2Name] = useState("Presenter 2");
   const [generatingPresenter, setGeneratingPresenter] = useState<number | null>(null);
@@ -38,6 +39,7 @@ const LongVideoEditorComponent: React.FC = () => {
     readLongVideoEdit(id).then((edit) => {
       if (edit) {
         setStage(edit.stage);
+        setPresenterCount(edit.presenterCount ?? 2);
         setPresenter1Name(edit.presenter1Name || "Presenter 1");
         setPresenter2Name(edit.presenter2Name || "Presenter 2");
       }
@@ -73,7 +75,7 @@ const LongVideoEditorComponent: React.FC = () => {
 
   const loadExistingOutputs = async (videoId: string) => {
     const outputs = await fetchOutputs(videoId);
-    const outputMap: Record<number, LongVideoOutput | null> = { 1: null, 2: null };
+    const outputMap: Record<number, LongVideoOutput | null> = {};
     for (const output of outputs) {
       outputMap[output.presenterNumber] = output;
     }
@@ -166,7 +168,7 @@ const LongVideoEditorComponent: React.FC = () => {
 
         {stage >= LONG_VIDEO_STAGE.ANALYZED && (
           <SpaceBetween size="m">
-            <ColumnLayout columns={2}>
+            <ColumnLayout columns={presenterCount}>
               <FormField label="Presenter 1 Name">
                 <Input
                   value={presenter1Name}
@@ -174,13 +176,15 @@ const LongVideoEditorComponent: React.FC = () => {
                   onBlur={handleSavePresenterNames}
                 />
               </FormField>
-              <FormField label="Presenter 2 Name">
-                <Input
-                  value={presenter2Name}
-                  onChange={({ detail }) => setPresenter2Name(detail.value)}
-                  onBlur={handleSavePresenterNames}
-                />
-              </FormField>
+              {presenterCount >= 2 && (
+                <FormField label="Presenter 2 Name">
+                  <Input
+                    value={presenter2Name}
+                    onChange={({ detail }) => setPresenter2Name(detail.value)}
+                    onBlur={handleSavePresenterNames}
+                  />
+                </FormField>
+              )}
             </ColumnLayout>
           </SpaceBetween>
         )}
@@ -226,8 +230,8 @@ const LongVideoEditorComponent: React.FC = () => {
               )}
 
               {stage >= LONG_VIDEO_STAGE.USER_CONFIRMED && (
-                <ColumnLayout columns={2}>
-                  {[1, 2].map((presenterNum) => {
+                <ColumnLayout columns={presenterCount}>
+                  {Array.from({ length: presenterCount }, (_, i) => i + 1).map((presenterNum) => {
                     const output = existingOutputs[presenterNum];
                     const isGenerating = generatingPresenter === presenterNum;
                     const segCount = getIncludedSegmentCount(presenterNum);
@@ -273,7 +277,7 @@ const LongVideoEditorComponent: React.FC = () => {
                 </ColumnLayout>
               )}
 
-              {(existingOutputs[1] || existingOutputs[2]) && (
+              {Object.values(existingOutputs).some(Boolean) && (
                 <Box float="right">
                   <Button
                     variant="primary"

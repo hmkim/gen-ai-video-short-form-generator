@@ -38,10 +38,11 @@ def lambda_handler(event, context):
     # Get existing segments from DetectPresenterBoundaries
     segments = event.get('segments', [])
     boundaries = event.get('boundaries', [])
+    presenter_count = int(event.get('presenterCount', 2))
 
     # Use Bedrock to refine segment classification
     refined_segments = analyze_with_bedrock(
-        script, segments, boundaries, model_id
+        script, segments, boundaries, model_id, presenter_count
     )
 
     # Delete old segments for this video before writing refined ones
@@ -90,7 +91,7 @@ def lambda_handler(event, context):
     }
 
 
-def analyze_with_bedrock(script, segments, boundaries, model_id):
+def analyze_with_bedrock(script, segments, boundaries, model_id, presenter_count=2):
     """Use Bedrock to refine segment classification using AI.
 
     The segments already have speaker labels from Transcribe diarization.
@@ -113,7 +114,14 @@ def analyze_with_bedrock(script, segments, boundaries, model_id):
     script_start = script[:4000]
     script_end = script[-4000:] if len(script) > 8000 else ""
 
-    prompt = f"""Below is a webinar/seminar video with exactly 2 presenters.
+    if presenter_count == 1:
+        presenter_desc = "1 presenter (single speaker)"
+        speaker_instruction = "1. All speech segments belong to presenter1. Keep speakerLabel as 'presenter1' for all presentation segments."
+    else:
+        presenter_desc = "exactly 2 presenters"
+        speaker_instruction = "1. The segments already have speaker labels (presenter1/presenter2) from Transcribe diarization. Keep these assignments - they are reliable."
+
+    prompt = f"""Below is a webinar/seminar video with {presenter_desc}.
 
 The transcript beginning:
 <script_start>{script_start}</script_start>
@@ -130,14 +138,14 @@ Speaker change boundaries detected:
 <boundaries>{json.dumps(boundaries[:30], indent=1)}</boundaries>
 
 Tasks:
-1. The segments already have speaker labels (presenter1/presenter2) from Transcribe diarization. Keep these assignments - they are reliable.
+{speaker_instruction}
 2. Identify non-presentation sections by analyzing transcript content and timing:
    - "intro": opening remarks, greetings, agenda before main content (typically first few minutes)
    - "outro": closing remarks, wrap-up at the end
    - "transition": between-presenter transitions, "thank you, next speaker" moments
    - "qa": Q&A sections (audience questions, discussion)
    - "silence": gaps with no meaningful content
-3. For segments already labeled presenter1/presenter2, keep that label unless it's clearly a non-presentation section.
+3. For segments already labeled presenter1{'/presenter2' if presenter_count >= 2 else ''}, keep that label unless it's clearly a non-presentation section.
 4. Set includeInOutput=false for intro/outro/transition/qa/silence segments.
 5. Merge very short segments (<3s) with their neighbors where possible.
 

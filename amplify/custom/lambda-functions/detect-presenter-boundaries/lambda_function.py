@@ -124,6 +124,7 @@ def lambda_handler(event, context):
     segment_table_name = os.environ["LONG_VIDEO_SEGMENT_TABLE_NAME"]
 
     video_id = event['uuid']
+    presenter_count = int(event.get('presenterCount', 2))
     source_file_key = f"videos/{video_id}/LongVideoTranscript.json"
 
     response = s3.get_object(Bucket=bucket_name, Key=source_file_key)
@@ -133,10 +134,12 @@ def lambda_handler(event, context):
 
     segment_table = dynamodb.Table(segment_table_name)
 
-    # Identify unique speakers (we assume exactly 2 presenters)
     speakers = list(set(seg['speaker_label'] for seg in merged_segments))
     speaker_map = {}
-    if len(speakers) >= 2:
+    if presenter_count == 1:
+        for spk in speakers:
+            speaker_map[spk] = 'presenter1'
+    elif len(speakers) >= 2:
         speaker_map[speakers[0]] = 'presenter1'
         speaker_map[speakers[1]] = 'presenter2'
     elif len(speakers) == 1:
@@ -178,5 +181,6 @@ def lambda_handler(event, context):
         'segments': segments_output,
         'boundaries': boundaries,
         'speaker_map': speaker_map,
+        'presenterCount': presenter_count,
         'uuid': video_id,
     }

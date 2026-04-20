@@ -1,6 +1,6 @@
-import { Box, SpaceBetween, TextFilter, Header, Table, Button, Link, Modal } from '@cloudscape-design/components';
+import { Box, SpaceBetween, TextFilter, Header, Table, Button, Link, Modal, StatusIndicator } from '@cloudscape-design/components';
 import React, { useEffect, useState } from 'react';
-import { fetchLongVideoEdits, LongVideoEdit, longVideoStageToString, deleteLongVideoEdit } from '../../apis/longVideoEdit';
+import { fetchLongVideoEdits, LongVideoEdit, deleteLongVideoEdit, LONG_VIDEO_STAGE } from '../../apis/longVideoEdit';
 import { modelOptions } from '../../data/modelList';
 
 const LongVideoHistoryComponent: React.FC = () => {
@@ -62,19 +62,37 @@ const LongVideoHistoryComponent: React.FC = () => {
             cell: item => getModelName(item.modelID),
           },
           {
-            id: "presenter1",
-            header: "Presenter 1",
-            cell: item => item.presenter1Name || "Presenter 1",
-          },
-          {
-            id: "presenter2",
-            header: "Presenter 2",
-            cell: item => item.presenter2Name || "Presenter 2",
+            id: "presenters",
+            header: "Presenters",
+            cell: item => {
+              const count = item.presenterCount ?? 2;
+              if (count === 1) {
+                return item.presenter1Name || "Presenter 1";
+              }
+              return `${item.presenter1Name || "Presenter 1"}, ${item.presenter2Name || "Presenter 2"}`;
+            },
           },
           {
             id: "stage",
             header: "Status",
-            cell: item => longVideoStageToString[item.stage] || "Unknown"
+            cell: item => {
+              switch (item.stage) {
+                case LONG_VIDEO_STAGE.UPLOADED:
+                  return <StatusIndicator type="in-progress">Transcribing...</StatusIndicator>;
+                case LONG_VIDEO_STAGE.TRANSCRIBED:
+                  return <StatusIndicator type="in-progress">Analyzing...</StatusIndicator>;
+                case LONG_VIDEO_STAGE.ANALYZED:
+                  return <StatusIndicator type="info">Analyzed</StatusIndicator>;
+                case LONG_VIDEO_STAGE.USER_CONFIRMED:
+                  return <StatusIndicator type="info">Confirmed</StatusIndicator>;
+                case LONG_VIDEO_STAGE.PROCESSING:
+                  return <StatusIndicator type="in-progress">Generating...</StatusIndicator>;
+                case LONG_VIDEO_STAGE.COMPLETE:
+                  return <StatusIndicator type="success">Complete</StatusIndicator>;
+                default:
+                  return <StatusIndicator type="stopped">Unknown</StatusIndicator>;
+              }
+            }
           },
           {
             id: "createdAt",
@@ -96,8 +114,7 @@ const LongVideoHistoryComponent: React.FC = () => {
         columnDisplay={[
           { id: "videoName", visible: true },
           { id: "modelId", visible: true },
-          { id: "presenter1", visible: true },
-          { id: "presenter2", visible: true },
+          { id: "presenters", visible: true },
           { id: "stage", visible: true },
           { id: "createdAt", visible: true },
           { id: "delete", visible: true },
