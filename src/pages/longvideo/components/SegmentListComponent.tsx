@@ -7,17 +7,25 @@ interface SegmentListComponentProps {
   onSegmentsChange: (segments: LongVideoSegment[]) => void;
   onSegmentSelect: (segment: LongVideoSegment) => void;
   selectedSegmentId?: string;
+  presenterCount?: number;
 }
 
-const SEGMENT_TYPE_OPTIONS = [
-  { label: 'Presenter 1', value: 'presenter1' },
-  { label: 'Presenter 2', value: 'presenter2' },
-  { label: 'Intro', value: 'intro' },
-  { label: 'Outro', value: 'outro' },
-  { label: 'Transition', value: 'transition' },
-  { label: 'Q&A', value: 'qa' },
-  { label: 'Silence', value: 'silence' },
-];
+const getSegmentTypeOptions = (presenterCount: number) => {
+  const options = [
+    { label: 'Presenter 1', value: 'presenter1' },
+  ];
+  if (presenterCount >= 2) {
+    options.push({ label: 'Presenter 2', value: 'presenter2' });
+  }
+  options.push(
+    { label: 'Intro', value: 'intro' },
+    { label: 'Outro', value: 'outro' },
+    { label: 'Transition', value: 'transition' },
+    { label: 'Q&A', value: 'qa' },
+    { label: 'Silence', value: 'silence' },
+  );
+  return options;
+};
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -30,7 +38,9 @@ const SegmentListComponent: React.FC<SegmentListComponentProps> = ({
   onSegmentsChange,
   onSegmentSelect,
   selectedSegmentId,
+  presenterCount = 2,
 }) => {
+  const segmentTypeOptions = getSegmentTypeOptions(presenterCount);
 
   const handleTypeChange = async (segment: LongVideoSegment, newType: string) => {
     const speakerLabel = newType.startsWith('presenter') ? newType : segment.speakerLabel;
@@ -79,9 +89,9 @@ const SegmentListComponent: React.FC<SegmentListComponentProps> = ({
           header: "Type",
           cell: item => (
             <Select
-              selectedOption={SEGMENT_TYPE_OPTIONS.find(o => o.value === item.segmentType) || { label: item.segmentType, value: item.segmentType }}
+              selectedOption={segmentTypeOptions.find(o => o.value === item.segmentType) || { label: item.segmentType, value: item.segmentType }}
               onChange={({ detail }) => handleTypeChange(item, detail.selectedOption.value!)}
-              options={SEGMENT_TYPE_OPTIONS}
+              options={segmentTypeOptions}
               expandToViewport
             />
           ),

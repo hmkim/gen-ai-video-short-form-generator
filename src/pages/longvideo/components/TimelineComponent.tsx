@@ -6,6 +6,7 @@ interface TimelineComponentProps {
   totalDuration: number;
   onSegmentClick: (segment: LongVideoSegment) => void;
   selectedSegmentId?: string;
+  presenterCount?: number;
 }
 
 const SEGMENT_COLORS: Record<string, string> = {
@@ -24,13 +25,18 @@ const TimelineComponent: React.FC<TimelineComponentProps> = ({
   totalDuration,
   onSegmentClick,
   selectedSegmentId,
+  presenterCount = 2,
 }) => {
   if (totalDuration === 0) return null;
+
+  const visibleColors = Object.entries(SEGMENT_COLORS).filter(
+    ([type]) => !(type === 'presenter2' && presenterCount < 2)
+  );
 
   return (
     <div style={{ marginBottom: '16px' }}>
       <div style={{ display: 'flex', marginBottom: '8px', gap: '12px', flexWrap: 'wrap' }}>
-        {Object.entries(SEGMENT_COLORS).map(([type, color]) => (
+        {visibleColors.map(([type, color]) => (
           <div key={type} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <div style={{ width: 12, height: 12, backgroundColor: color, borderRadius: 2 }} />
             <span style={{ fontSize: '12px' }}>{type}</span>

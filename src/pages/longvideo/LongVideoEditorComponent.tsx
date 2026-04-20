@@ -209,6 +209,7 @@ const LongVideoEditorComponent: React.FC = () => {
               totalDuration={totalDuration}
               onSegmentClick={handleSegmentClick}
               selectedSegmentId={selectedSegment?.id}
+              presenterCount={presenterCount}
             />
           </Container>
 
@@ -218,6 +219,7 @@ const LongVideoEditorComponent: React.FC = () => {
               onSegmentsChange={setSegments}
               onSegmentSelect={handleSegmentClick}
               selectedSegmentId={selectedSegment?.id}
+              presenterCount={presenterCount}
             />
           </Container>
 
