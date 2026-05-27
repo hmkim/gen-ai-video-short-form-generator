@@ -101,6 +101,7 @@ const LongVideoEditorComponent: React.FC = () => {
     setSelectedSegment(segment);
     if (videoRef.current && segment.startTime != null) {
       videoRef.current.currentTime = segment.startTime;
+      videoRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   };
 

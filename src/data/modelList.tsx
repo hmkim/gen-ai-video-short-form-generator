@@ -10,7 +10,13 @@ export interface ModelOption {
 }
 
 export const modelOptions: ModelOption[] = [
-  // Anthropic — Latest
+  // Anthropic
+  {
+    name: "Claude Opus 4.7",
+    logo: "logos/anthropic-logo.png",
+    modelId: "us.anthropic.claude-opus-4-7",
+    provider: "Anthropic"
+  },
   {
     name: "Claude Opus 4.6",
     logo: "logos/anthropic-logo.png",
@@ -51,18 +57,6 @@ export const modelOptions: ModelOption[] = [
     name: "Claude Sonnet 4",
     logo: "logos/anthropic-logo.png",
     modelId: "us.anthropic.claude-sonnet-4-20250514-v1:0",
-    provider: "Anthropic"
-  },
-  {
-    name: "Claude 3.7 Sonnet",
-    logo: "logos/anthropic-logo.png",
-    modelId: "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-    provider: "Anthropic"
-  },
-  {
-    name: "Claude 3.5 Haiku",
-    logo: "logos/anthropic-logo.png",
-    modelId: "us.anthropic.claude-3-5-haiku-20241022-v1:0",
     provider: "Anthropic"
   },
   // Amazon Nova
@@ -120,6 +114,12 @@ export const modelOptions: ModelOption[] = [
     name: "DeepSeek R1",
     logo: "logos/deepseek-logo.png",
     modelId: "us.deepseek.r1-v1:0",
+    provider: "DeepSeek"
+  },
+  {
+    name: "DeepSeek V3.2",
+    logo: "logos/deepseek-logo.png",
+    modelId: "deepseek.v3.2",
     provider: "DeepSeek"
   },
 ];
