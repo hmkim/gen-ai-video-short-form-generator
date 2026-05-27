@@ -12,8 +12,8 @@ const LongVideoUploadComponent: React.FC = () => {
   }));
 
   const [selectedModel, setSelectedModel] = useState({
-    label: "Claude 3.7 Sonnet",
-    value: "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+    label: "Claude Opus 4.7",
+    value: "us.anthropic.claude-opus-4-7",
   });
   const [presenterCount, setPresenterCount] = useState(2);
   const [presenter1Name, setPresenter1Name] = useState("Presenter 1");
