@@ -138,6 +138,14 @@ const LongVideoEditorComponent: React.FC = () => {
     await updateLongVideoEdit(id, { presenter1Name, presenter2Name });
   };
 
+  const handleSegmentEdited = async () => {
+    if (!id) return;
+    if (stage >= LONG_VIDEO_STAGE.USER_CONFIRMED) {
+      await updateLongVideoEdit(id, { stage: LONG_VIDEO_STAGE.ANALYZED });
+      setStage(LONG_VIDEO_STAGE.ANALYZED);
+    }
+  };
+
   const getPresenterName = (num: number) => num === 1 ? presenter1Name : presenter2Name;
 
   const getIncludedSegmentCount = (presenterNumber: number) => {
@@ -220,15 +228,23 @@ const LongVideoEditorComponent: React.FC = () => {
               onSegmentSelect={handleSegmentClick}
               selectedSegmentId={selectedSegment?.id}
               presenterCount={presenterCount}
+              onSegmentEdited={handleSegmentEdited}
             />
           </Container>
 
           <Container>
             <SpaceBetween size="m">
-              {stage === LONG_VIDEO_STAGE.ANALYZED && (
-                <Button variant="primary" onClick={handleConfirmSegments}>
-                  Confirm Segments
-                </Button>
+              {stage >= LONG_VIDEO_STAGE.ANALYZED && (
+                <SpaceBetween size="s">
+                  {stage === LONG_VIDEO_STAGE.ANALYZED && Object.values(existingOutputs).some(Boolean) && (
+                    <Alert type="warning">
+                      Segments have been edited since last confirmation. Re-confirm to regenerate outputs.
+                    </Alert>
+                  )}
+                  <Button variant="primary" onClick={handleConfirmSegments}>
+                    {Object.values(existingOutputs).some(Boolean) ? 'Re-confirm Segments' : 'Confirm Segments'}
+                  </Button>
+                </SpaceBetween>
               )}
 
               {stage >= LONG_VIDEO_STAGE.USER_CONFIRMED && (

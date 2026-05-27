@@ -18,7 +18,9 @@ There is no test framework configured in this project.
 
 ## Architecture
 
-This is a **GenAI video short-form generator** that takes long-form videos and uses AI to extract and generate up to 15 short-form highlight clips with titles and subtitles.
+This is a **GenAI video short-form generator** with two major feature paths:
+1. **Short-form clips** — takes long-form videos and uses AI to extract up to 15 short-form highlight clips with titles and subtitles
+2. **Long video editing** — presenter-aware segmentation and output generation with YouTube upload integration
 
 ### Tech Stack
 
@@ -38,10 +40,19 @@ Single-page React app wrapped in `<Authenticator>` (Cognito). Routes defined in 
 | `/gallery` | `ShortsGalleryComponent` | Browse generated shorts |
 | `/history/:id` | `VideoShortifyComponent` | Process a specific video |
 | `/shorts/:id/:highlight` | `FinalShortComponent` | View/edit final short |
+| `/longvideo` | `LongVideoUploadComponent` | Upload long videos |
+| `/longvideo/history` | `LongVideoHistoryComponent` | Long video history |
+| `/longvideo/edit/:id` | `LongVideoEditorComponent` | Edit segments/presenters |
+| `/longvideo/output/:id` | `LongVideoOutputComponent` | View/manage outputs |
+| `/youtube/connect` | `YouTubeConnectComponent` | OAuth connection |
+| `/youtube/callback` | `YouTubeCallbackComponent` | OAuth callback |
+| `/youtube/uploads` | `YouTubeUploadsComponent` | Manage uploads |
 
-- `src/apis/` — GraphQL client utilities for History, Highlight, and Gallery CRUD
+- `src/apis/` — GraphQL client utilities (history, highlight, gallery, longVideoEdit, longVideoSegment, longVideoOutput, youtube)
 - `src/data/modelList.tsx` — Supported Bedrock model definitions
-- `src/pages/shortify/` — Video editing subcomponents (frame selection, subtitle editing)
+- `src/pages/shortify/` — Short-form video editing subcomponents
+- `src/pages/longvideo/` — Long video editing UI with presenter segmentation
+- `src/pages/youtube/` — YouTube OAuth and upload management
 
 ### Backend (`amplify/`)
 
@@ -49,19 +60,26 @@ Infrastructure defined via Amplify Gen2 in `amplify/backend.ts`. Key resources:
 
 - **Auth** (`auth/resource.ts`): Cognito user pool with email login
 - **Storage** (`storage/resource.ts`): S3 bucket with Transfer Acceleration and EventBridge notifications
-- **Data** (`data/resource.ts`): AppSync GraphQL API with three DynamoDB models:
+- **Data** (`data/resource.ts`): AppSync GraphQL API with DynamoDB models:
   - `History` — video processing records (owner-authorized)
   - `Highlight` — extracted highlight segments (composite key: VideoName + Index)
   - `Gallery` — generated short videos (authenticated access, secondary index on type/createdAt)
-- **Custom mutations**: `publish` / `receive` for real-time stage updates via subscriptions
+  - `LongVideoEdit` — long video processing records with presenter metadata
+  - `LongVideoSegment` — time-based segments with speaker labels and types
+  - `LongVideoOutput` — generated output files per presenter, with YouTube upload state
+  - `YouTubeUpload` — YouTube upload tracking records
+- **Custom mutations/subscriptions**: `publish`/`receive` for short-form, `publishLongVideo`/`receiveLongVideo` for long video real-time stage updates
+- **Custom queries**: `generateShort`, `generateLongVideoOutput`, `uploadToYouTube`, `suggestVideoMetadata`, `exchangeYouTubeToken`, `checkYouTubeConnection`, `saveYouTubeChannel`
 
 ### Processing Pipeline
 
-Three Step Functions orchestrate the video processing:
+Five Step Functions orchestrate video processing (`amplify/custom/step-functions/`):
 
 1. **VideoUploadStateMachine** — Triggered by S3 EventBridge when `**/RAW.mp4` uploaded. Runs transcription, topic extraction, and timeframe matching.
 2. **UnifiedReasoningStateMachine** — Handles reasoning model processing (Claude/DeepSeek).
 3. **GenerateShortStateMachine** — Triggered via `generateShort` GraphQL query. Creates MediaConvert jobs for final short videos.
+4. **LongVideoProcessStateMachine** — Triggered by S3 EventBridge when `**/LONG_RAW.mp4` uploaded. Runs presenter boundary detection and segment analysis.
+5. **GenerateLongVideoStateMachine** — Triggered via `generateLongVideoOutput` query. Creates per-presenter output videos.
 
 ### Lambda Functions (`amplify/custom/lambda-functions/`)
 
@@ -76,16 +94,21 @@ All Python 3.12 unless noted:
 | `create-background` | Generate video backgrounds using Pillow layer |
 | `make-short-template` | Create MediaConvert job templates |
 | `unified-reasoning` | Invoke reasoning models (Claude/DeepSeek) |
+| `detect-presenter-boundaries` | Identify presenter transitions in video |
+| `analyze-presenter-segments` | Classify and label segments by presenter |
+| `generate-long-video-output` | Create MediaConvert jobs for long video outputs |
+| `youtube-upload` | Upload videos to YouTube via OAuth |
 
 ### Event-Driven Communication
 
-- S3 upload events trigger VideoUploadStateMachine via EventBridge
-- Step Functions emit `StageChanged` events to EventBridge
-- EventBridge forwards stage changes to AppSync via GraphQL mutation (`publish`)
-- Frontend subscribes to `receive` subscription filtered by `videoId` for real-time progress
+- S3 upload events trigger state machines via EventBridge (`RAW.mp4` → short-form, `LONG_RAW.mp4` → long video)
+- Step Functions emit `StageChanged` / `LongVideoStageChanged` events to EventBridge
+- EventBridge forwards stage changes to AppSync via GraphQL mutations (`publish` / `publishLongVideo`)
+- Frontend subscribes to `receive` / `receiveLongVideo` subscriptions filtered by `videoId` for real-time progress
 
 ### Key Configuration
 
 - `amplify_outputs.json` (gitignored) — Generated Amplify config consumed by `Amplify.configure()` in `App.tsx`
-- Lambda environment variables (`BUCKET_NAME`, `HISTORY_TABLE_NAME`, `HIGHLIGHT_TABLE_NAME`, `STATE_MACHINE`) are set via CDK constructs, not `.env` files
+- Lambda environment variables (`BUCKET_NAME`, `*_TABLE_NAME`, `STATE_MACHINE`, etc.) are set via CDK constructs in `backend.ts`, not `.env` files
+- YouTube OAuth credentials stored in AWS Secrets Manager
 - Bedrock model access must be enabled in **us-west-2**

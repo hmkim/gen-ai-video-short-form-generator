@@ -134,7 +134,7 @@ def lambda_handler(event, context):
 
     segment_table = dynamodb.Table(segment_table_name)
 
-    speakers = list(set(seg['speaker_label'] for seg in merged_segments))
+    speakers = list(dict.fromkeys(seg['speaker_label'] for seg in merged_segments))
     speaker_map = {}
     if presenter_count == 1:
         for spk in speakers:

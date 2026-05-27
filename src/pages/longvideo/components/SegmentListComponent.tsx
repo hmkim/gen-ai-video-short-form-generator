@@ -1,5 +1,5 @@
-import React from 'react';
-import { Table, Header, Select, Toggle, Button } from '@cloudscape-design/components';
+import React, { useState } from 'react';
+import { Table, Header, Select, Toggle, Button, Input, SpaceBetween, Box } from '@cloudscape-design/components';
 import { LongVideoSegment, updateSegment } from '../../../apis/longVideoSegment';
 
 interface SegmentListComponentProps {
@@ -8,6 +8,7 @@ interface SegmentListComponentProps {
   onSegmentSelect: (segment: LongVideoSegment) => void;
   selectedSegmentId?: string;
   presenterCount?: number;
+  onSegmentEdited?: () => void;
 }
 
 const getSegmentTypeOptions = (presenterCount: number) => {
@@ -33,14 +34,22 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+function parseTime(mmss: string): number | null {
+  const match = mmss.trim().match(/^(\d+):([0-5]\d)$/);
+  if (!match) return null;
+  return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+}
+
 const SegmentListComponent: React.FC<SegmentListComponentProps> = ({
   segments,
   onSegmentsChange,
   onSegmentSelect,
   selectedSegmentId,
   presenterCount = 2,
+  onSegmentEdited,
 }) => {
   const segmentTypeOptions = getSegmentTypeOptions(presenterCount);
+  const [editingTimes, setEditingTimes] = useState<Record<string, { start: string; end: string }>>({});
 
   const handleTypeChange = async (segment: LongVideoSegment, newType: string) => {
     const speakerLabel = newType.startsWith('presenter') ? newType : segment.speakerLabel;
@@ -63,6 +72,42 @@ const SegmentListComponent: React.FC<SegmentListComponentProps> = ({
     onSegmentsChange(updated);
   };
 
+  const handleTimeBlur = async (segment: LongVideoSegment, field: 'start' | 'end', rawValue: string) => {
+    const parsed = parseTime(rawValue);
+    if (parsed === null) {
+      setEditingTimes(prev => {
+        const copy = { ...prev };
+        delete copy[segment.id];
+        return copy;
+      });
+      return;
+    }
+
+    const newStart = field === 'start' ? parsed : segment.startTime!;
+    const newEnd = field === 'end' ? parsed : segment.endTime!;
+
+    if (newStart >= newEnd) {
+      setEditingTimes(prev => {
+        const copy = { ...prev };
+        delete copy[segment.id];
+        return copy;
+      });
+      return;
+    }
+
+    await updateSegment(segment.id, { startTime: newStart, endTime: newEnd });
+    const updated = segments.map(s =>
+      s.id === segment.id ? { ...s, startTime: newStart, endTime: newEnd } : s
+    );
+    onSegmentsChange(updated);
+    onSegmentEdited?.();
+    setEditingTimes(prev => {
+      const copy = { ...prev };
+      delete copy[segment.id];
+      return copy;
+    });
+  };
+
   return (
     <Table
       columnDefinitions={[
@@ -75,8 +120,39 @@ const SegmentListComponent: React.FC<SegmentListComponentProps> = ({
         {
           id: "time",
           header: "Time",
-          cell: item => `${formatTime(item.startTime!)} - ${formatTime(item.endTime!)}`,
-          width: 150,
+          cell: item => {
+            const local = editingTimes[item.id];
+            const startVal = local?.start ?? formatTime(item.startTime!);
+            const endVal = local?.end ?? formatTime(item.endTime!);
+            return (
+              <SpaceBetween size="xxs" direction="horizontal">
+                <Input
+                  value={startVal}
+                  onChange={({ detail }) =>
+                    setEditingTimes(prev => ({
+                      ...prev,
+                      [item.id]: { start: detail.value, end: prev[item.id]?.end ?? formatTime(item.endTime!) }
+                    }))
+                  }
+                  onBlur={() => handleTimeBlur(item, 'start', startVal)}
+                  ariaLabel="Start time"
+                />
+                <Box>–</Box>
+                <Input
+                  value={endVal}
+                  onChange={({ detail }) =>
+                    setEditingTimes(prev => ({
+                      ...prev,
+                      [item.id]: { start: prev[item.id]?.start ?? formatTime(item.startTime!), end: detail.value }
+                    }))
+                  }
+                  onBlur={() => handleTimeBlur(item, 'end', endVal)}
+                  ariaLabel="End time"
+                />
+              </SpaceBetween>
+            );
+          },
+          width: 180,
         },
         {
           id: "duration",
@@ -116,15 +192,16 @@ const SegmentListComponent: React.FC<SegmentListComponentProps> = ({
         },
         {
           id: "select",
-          header: "",
+          header: "Preview",
           cell: item => (
             <Button
               variant={item.id === selectedSegmentId ? "primary" : "normal"}
               onClick={() => onSegmentSelect(item)}
-              iconName="angle-right"
+              iconName="caret-right-filled"
+              ariaLabel="Preview segment"
             />
           ),
-          width: 60,
+          width: 70,
         },
       ]}
       items={segments}
