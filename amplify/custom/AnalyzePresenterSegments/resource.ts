@@ -2,7 +2,7 @@ import { Code, Function, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
 import { IBucket } from 'aws-cdk-lib/aws-s3';
 import { ITable } from 'aws-cdk-lib/aws-dynamodb';
-import { Duration } from 'aws-cdk-lib/core';
+import { Duration, Stack } from 'aws-cdk-lib/core';
 import { Effect, PolicyStatement } from 'aws-cdk-lib/aws-iam';
 
 type AnalyzePresenterSegmentsProps = {
@@ -35,9 +35,14 @@ export class AnalyzePresenterSegments extends Construct {
     this.handler.addToRolePolicy(
       new PolicyStatement({
         effect: Effect.ALLOW,
-        resources: ["*"],
+        resources: [
+          "arn:aws:bedrock:*::foundation-model/*",
+          `arn:aws:bedrock:*:${Stack.of(this).account}:inference-profile/*`,
+          `arn:aws:bedrock:*:${Stack.of(this).account}:application-inference-profile/*`,
+        ],
         actions: [
           "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream",
         ],
       })
     );

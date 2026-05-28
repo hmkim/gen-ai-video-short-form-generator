@@ -1,17 +1,66 @@
 import json
+import html
 import boto3
 import botocore
 import os
+import re
 import uuid
 from decimal import Decimal
+from datetime import datetime, timezone
 
 s3 = boto3.client('s3')
 dynamodb = boto3.resource('dynamodb')
 bedrock = boto3.client(
     service_name='bedrock-runtime',
     region_name='us-west-2',
-    config=botocore.config.Config(connect_timeout=1000, read_timeout=1000)
+    config=botocore.config.Config(
+        connect_timeout=10,
+        read_timeout=300,
+        retries={'max_attempts': 2}
+    )
 )
+
+UUID_PATTERN = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
+MAX_SCRIPT_CHARS = 16000
+
+
+def validate_input(event):
+    """Validate event inputs."""
+    video_id = event.get('uuid', '')
+    if not isinstance(video_id, str) or not UUID_PATTERN.match(video_id):
+        raise ValueError(f"Invalid uuid format: {video_id!r}")
+
+    raw_count = event.get('presenterCount', 2)
+    try:
+        presenter_count = int(raw_count)
+    except (TypeError, ValueError):
+        raise ValueError(f"presenterCount must be an integer, got {type(raw_count)}")
+    if presenter_count not in (1, 2):
+        raise ValueError(f"presenterCount must be 1 or 2, got {presenter_count}")
+
+    segments = event.get('segments', [])
+    if not isinstance(segments, list):
+        raise ValueError("segments must be a list")
+
+    return video_id, presenter_count, segments
+
+
+def delete_all_segments_for_video(segment_table, video_id):
+    """Delete all segments for a video, handling DynamoDB scan pagination."""
+    scan_kwargs = {
+        'FilterExpression': 'longVideoEditId = :vid',
+        'ExpressionAttributeValues': {':vid': video_id},
+        'ProjectionExpression': 'id'
+    }
+
+    with segment_table.batch_writer() as batch:
+        while True:
+            response = segment_table.scan(**scan_kwargs)
+            for old in response.get('Items', []):
+                batch.delete_item(Key={'id': old['id']})
+            if 'LastEvaluatedKey' not in response:
+                break
+            scan_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
 
 
 def lambda_handler(event, context):
@@ -19,51 +68,52 @@ def lambda_handler(event, context):
     edit_table_name = os.environ["LONG_VIDEO_EDIT_TABLE_NAME"]
     segment_table_name = os.environ["LONG_VIDEO_SEGMENT_TABLE_NAME"]
 
-    video_id = event['uuid']
-    source_file_key = f"videos/{video_id}/LongVideoTranscript.json"
+    video_id, presenter_count, segments = validate_input(event)
 
     edit_table = dynamodb.Table(edit_table_name)
     segment_table = dynamodb.Table(segment_table_name)
 
     # Get model ID from edit record
-    edit_record = edit_table.get_item(Key={'id': video_id})
-    model_id = edit_record['Item']['modelID']
-    owner = edit_record['Item'].get('owner', '')
+    try:
+        edit_record = edit_table.get_item(Key={'id': video_id})
+        model_id = edit_record['Item']['modelID']
+        owner = edit_record['Item'].get('owner', '')
+    except (KeyError, Exception) as e:
+        raise ValueError(f"Could not load edit record for {video_id}: {e}")
 
     # Get transcript
+    source_file_key = f"videos/{video_id}/LongVideoTranscript.json"
     response = s3.get_object(Bucket=bucket_name, Key=source_file_key)
     transcript_json = json.loads(response['Body'].read().decode('utf-8'))
-    script = transcript_json['results']['transcripts'][0]['transcript']
 
-    # Get existing segments from DetectPresenterBoundaries
-    segments = event.get('segments', [])
+    try:
+        script = transcript_json['results']['transcripts'][0]['transcript']
+    except (KeyError, IndexError) as e:
+        print(f"Warning: could not extract transcript text: {e}")
+        script = ""
+
+    script = script[:MAX_SCRIPT_CHARS]
+
+    # Get existing segments and metadata from detect-presenter-boundaries
     boundaries = event.get('boundaries', [])
-    presenter_count = int(event.get('presenterCount', 2))
+    speech_ratio_metadata = event.get('speech_ratio_metadata', {})
+    visual_analysis = event.get('visual_analysis', [])
 
     # Use Bedrock to refine segment classification
     refined_segments = analyze_with_bedrock(
-        script, segments, boundaries, model_id, presenter_count
+        script, segments, boundaries, model_id, presenter_count,
+        speech_ratio_metadata, visual_analysis
     )
 
-    # Delete old segments for this video before writing refined ones
-    # (DetectPresenterBoundaries wrote initial segments; AI may return new IDs)
-    old_segments = segment_table.scan(
-        FilterExpression='longVideoEditId = :vid',
-        ExpressionAttributeValues={':vid': video_id},
-        ProjectionExpression='id'
-    )
-    with segment_table.batch_writer() as batch:
-        for old in old_segments.get('Items', []):
-            batch.delete_item(Key={'id': old['id']})
-
-    # Write refined segments
-    from datetime import datetime, timezone
+    # Write-then-Delete pattern: write new segments first, then delete old ones.
+    # This prevents data loss if Lambda fails between operations.
     timestamp = datetime.now(timezone.utc).isoformat()[:-6] + "Z"
 
+    # Step 1: Write refined segments
     with segment_table.batch_writer() as batch:
         for seg in refined_segments:
             segment_id = seg.get('id') or str(uuid.uuid4())
-            segment_id = str(segment_id)  # ensure string type for DDB key
+            segment_id = str(segment_id)
 
             start_time = float(seg.get('startTime', 0))
             end_time = float(seg.get('endTime', 0))
@@ -84,6 +134,24 @@ def lambda_handler(event, context):
             }
             batch.put_item(Item=item)
 
+    # Step 2: Delete old segments (written by detect-presenter-boundaries)
+    # Only delete segments whose IDs are NOT in the new set
+    new_ids = {str(seg.get('id') or '') for seg in refined_segments}
+    scan_kwargs = {
+        'FilterExpression': 'longVideoEditId = :vid',
+        'ExpressionAttributeValues': {':vid': video_id},
+        'ProjectionExpression': 'id'
+    }
+    with segment_table.batch_writer() as batch:
+        while True:
+            response = segment_table.scan(**scan_kwargs)
+            for old in response.get('Items', []):
+                if old['id'] not in new_ids:
+                    batch.delete_item(Key={'id': old['id']})
+            if 'LastEvaluatedKey' not in response:
+                break
+            scan_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
+
     return {
         'statusCode': 200,
         'uuid': video_id,
@@ -91,26 +159,22 @@ def lambda_handler(event, context):
     }
 
 
-def analyze_with_bedrock(script, segments, boundaries, model_id, presenter_count=2):
-    """Use Bedrock to refine segment classification using AI.
-
-    The segments already have speaker labels from Transcribe diarization.
-    AI's job is to:
-    1. Identify intro/outro/transition/qa sections
-    2. Determine which Transcribe speaker (spk_0/spk_1) maps to presenter1/presenter2
-    3. Mark segments for inclusion/exclusion
-    """
-    # Build a concise summary of segments with their speaker labels
+def analyze_with_bedrock(script, segments, boundaries, model_id, presenter_count=2,
+                         speech_ratio_metadata=None, visual_analysis=None):
+    """Use Bedrock to refine segment classification using AI."""
+    # Build segment lines with sanitized data
     seg_lines = []
     for i, seg in enumerate(segments):
+        speaker = html.escape(str(seg.get('speakerLabel', '?')))[:32]
+        start_t = float(seg.get('startTime', 0))
+        end_t = float(seg.get('endTime', 0))
         seg_lines.append(
-            f"{i}: {seg['startTime']:.1f}-{seg['endTime']:.1f}s "
-            f"speaker={seg.get('speakerLabel','?')} "
-            f"dur={seg['endTime']-seg['startTime']:.1f}s"
+            f"{i}: {start_t:.1f}-{end_t:.1f}s "
+            f"speaker={speaker} dur={end_t - start_t:.1f}s"
         )
     segments_text = "\n".join(seg_lines)
 
-    # Use first and last parts of transcript for context (intro/outro detection)
+    # Use first and last parts of transcript for context
     script_start = script[:4000]
     script_end = script[-4000:] if len(script) > 8000 else ""
 
@@ -119,7 +183,33 @@ def analyze_with_bedrock(script, segments, boundaries, model_id, presenter_count
         speaker_instruction = "1. All speech segments belong to presenter1. Keep speakerLabel as 'presenter1' for all presentation segments."
     else:
         presenter_desc = "exactly 2 presenters"
-        speaker_instruction = "1. The segments already have speaker labels (presenter1/presenter2) from Transcribe diarization. Keep these assignments - they are reliable."
+        speaker_instruction = "1. The segments already have speaker labels (presenter1/presenter2) from speech duration analysis. Keep these assignments unless transcript content clearly contradicts them."
+
+    # Build speech ratio context
+    ratio_lines = []
+    if speech_ratio_metadata:
+        for spk, info in speech_ratio_metadata.items():
+            if isinstance(info, dict):
+                ratio_lines.append(
+                    f"  {html.escape(str(spk))} -> {info.get('mapped_label', '?')}: "
+                    f"{info.get('total_seconds', 0)}s "
+                    f"({info.get('speech_ratio', 0) * 100:.1f}% of total speech)"
+                )
+    ratio_context = "\n".join(ratio_lines) if ratio_lines else "Not available"
+
+    # Build visual analysis context
+    visual_lines = []
+    if visual_analysis:
+        for va in visual_analysis[:10]:
+            v = va.get('visual', {})
+            ts = va.get('timestamp', 0)
+            visual_lines.append(
+                f"  t={float(ts):.1f}s: {v.get('people_count', '?')} people, "
+                f"layout={html.escape(str(v.get('layout', '?'))[:30])}, "
+                f"transition_visible={v.get('transition_visible', '?')}, "
+                f"visual_confidence={html.escape(str(v.get('confidence', '?'))[:10])}"
+            )
+    visual_context = "\n".join(visual_lines) if visual_lines else "Not available"
 
     prompt = f"""Below is a webinar/seminar video with {presenter_desc}.
 
@@ -129,13 +219,29 @@ The transcript beginning:
 {"The transcript ending:" if script_end else ""}
 {"<script_end>" + script_end + "</script_end>" if script_end else ""}
 
-Here are {len(segments)} detected segments with Transcribe speaker diarization labels:
+Here are {len(segments)} detected segments with speaker labels:
 <segments>
 {segments_text}
 </segments>
 
 Speaker change boundaries detected:
 <boundaries>{json.dumps(boundaries[:30], indent=1)}</boundaries>
+
+Speaker speech-time analysis (speaker with most total speech is mapped as presenter1):
+<speech_ratios>
+{ratio_context}
+</speech_ratios>
+
+Visual frame analysis at boundary points:
+<visual_analysis>
+{visual_context}
+</visual_analysis>
+
+Content-based presenter identification hints:
+- Phrases like "welcome", "good morning", "my name is", "I'll be presenting" near the start strongly indicate the host/presenter1.
+- A speaker who only asks short questions is likely audience/moderator, not a main presenter.
+- Keep the speech-ratio mapping unless transcript content clearly contradicts it.
+- Use visual analysis to boost confidence where transition_visible=True and confidence=high.
 
 Tasks:
 {speaker_instruction}
@@ -176,18 +282,24 @@ Important: Return ALL {len(segments)} segments. Keep existing IDs. Respond only 
 
         first_index = raw_result.find('{')
         end_index = raw_result.rfind('}')
-        result = json.loads(raw_result[first_index:end_index + 1])
+        if first_index == -1 or end_index == -1:
+            print("No JSON found in Bedrock response")
+            return segments
+
+        try:
+            result = json.loads(raw_result[first_index:end_index + 1])
+        except json.JSONDecodeError as json_err:
+            print(f"JSON parse error from Bedrock response: {json_err}")
+            return segments
 
         ai_segments = result.get('segments', [])
         if ai_segments:
             return ai_segments
 
-        # If AI returned empty, fall back to original
         return segments
 
     except Exception as e:
         print(f"Error in analyze_with_bedrock: {str(e)}")
-        # Fall back to original segments - keep the speaker labels from DetectPresenterBoundaries
         return [{
             'id': seg.get('id') or str(uuid.uuid4()),
             'startTime': seg['startTime'],

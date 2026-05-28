@@ -9,7 +9,7 @@ import {
   readLongVideoEdit, updateLongVideoEdit, subscribeLongVideoStage,
   LONG_VIDEO_STAGE,
 } from '../../apis/longVideoEdit';
-import { fetchSegments, LongVideoSegment } from '../../apis/longVideoSegment';
+import { fetchSegments, updateSegment, LongVideoSegment } from '../../apis/longVideoSegment';
 import { generateLongVideoOutput, fetchOutputs, LongVideoOutput } from '../../apis/longVideoOutput';
 import TimelineComponent from './components/TimelineComponent';
 import SegmentListComponent from './components/SegmentListComponent';
@@ -139,6 +139,15 @@ const LongVideoEditorComponent: React.FC = () => {
     await updateLongVideoEdit(id, { presenter1Name, presenter2Name });
   };
 
+  const handleSegmentUpdate = async (segmentId: string, startTime: number, endTime: number) => {
+    await updateSegment(segmentId, { startTime, endTime });
+    setSegments(prev =>
+      prev.map(s => s.id === segmentId ? { ...s, startTime, endTime } : s)
+        .sort((a, b) => (a.startTime ?? 0) - (b.startTime ?? 0))
+    );
+    handleSegmentEdited();
+  };
+
   const handleSegmentEdited = async () => {
     if (!id) return;
     if (stage >= LONG_VIDEO_STAGE.USER_CONFIRMED) {
@@ -217,8 +226,10 @@ const LongVideoEditorComponent: React.FC = () => {
               segments={segments}
               totalDuration={totalDuration}
               onSegmentClick={handleSegmentClick}
+              onSegmentUpdate={handleSegmentUpdate}
               selectedSegmentId={selectedSegment?.id}
               presenterCount={presenterCount}
+              videoRef={videoRef}
             />
           </Container>
 

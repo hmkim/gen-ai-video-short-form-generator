@@ -130,6 +130,7 @@ export class LongVideoProcessStateMachine extends Construct {
         "segments.$": "$.Payload.segments",
         "boundaries.$": "$.Payload.boundaries",
         "speaker_map.$": "$.Payload.speaker_map",
+        "speech_ratio_metadata.$": "$.Payload.speech_ratio_metadata",
         "presenterCount.$": "$.Payload.presenterCount"
       },
       resultPath: "$.boundaryResult"
@@ -143,6 +144,7 @@ export class LongVideoProcessStateMachine extends Construct {
         "bucket_name.$": "$.bucket_name",
         "segments.$": "$.boundaryResult.segments",
         "boundaries.$": "$.boundaryResult.boundaries",
+        "speech_ratio_metadata.$": "$.boundaryResult.speech_ratio_metadata",
         "presenterCount.$": "$.boundaryResult.presenterCount"
       }),
       resultPath: "$.analysisResult"
