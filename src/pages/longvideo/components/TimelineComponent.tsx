@@ -39,6 +39,15 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+const ZOOM_LEVELS = [0.5, 1, 2, 4, 8, 16, 32, 64, 128];
+
+function computeScaleParams(pxPerSecond: number) {
+  const targetScaleWidth = 100;
+  const scale = Math.max(1, Math.round(targetScaleWidth / pxPerSecond));
+  const scaleWidth = Math.round(pxPerSecond * scale);
+  return { scale, scaleWidth };
+}
+
 const TimelineComponent: React.FC<TimelineComponentProps> = ({
   segments,
   totalDuration,
@@ -49,7 +58,8 @@ const TimelineComponent: React.FC<TimelineComponentProps> = ({
   videoRef,
 }) => {
   const timelineRef = useRef<TimelineState>(null);
-  const [scaleWidth, setScaleWidth] = useState(160);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [pxPerSecond, setPxPerSecond] = useState(4);
   const animFrameRef = useRef<number>(0);
 
   const segmentMap = useMemo(() => {
@@ -207,16 +217,55 @@ const TimelineComponent: React.FC<TimelineComponentProps> = ({
     return <span style={{ fontSize: '10px', color: '#666' }}>{formatTime(scale)}</span>;
   }, []);
 
+  const handleFitToView = useCallback(() => {
+    const containerWidth = containerRef.current?.offsetWidth ?? 800;
+    const availableWidth = containerWidth - 60;
+    const fitPxPerSec = Math.max(0.5, availableWidth / totalDuration);
+    setPxPerSecond(fitPxPerSec);
+  }, [totalDuration]);
+
+  const handleZoomIn = useCallback(() => {
+    setPxPerSecond((prev) => {
+      const idx = ZOOM_LEVELS.findIndex((z) => z > prev);
+      return idx >= 0 ? ZOOM_LEVELS[idx] : ZOOM_LEVELS[ZOOM_LEVELS.length - 1];
+    });
+  }, []);
+
+  const handleZoomOut = useCallback(() => {
+    setPxPerSecond((prev) => {
+      const containerWidth = containerRef.current?.offsetWidth ?? 800;
+      const minPx = Math.max(0.5, (containerWidth - 60) / totalDuration);
+      const idx = ZOOM_LEVELS.slice().reverse().findIndex((z) => z < prev);
+      const newVal = idx >= 0 ? ZOOM_LEVELS[ZOOM_LEVELS.length - 1 - idx] : ZOOM_LEVELS[0];
+      return Math.max(minPx, newVal);
+    });
+  }, [totalDuration]);
+
+  useEffect(() => {
+    if (totalDuration > 0 && containerRef.current) {
+      const containerWidth = containerRef.current.offsetWidth || 800;
+      const availableWidth = containerWidth - 60;
+      const fitPxPerSec = Math.max(0.5, availableWidth / totalDuration);
+      setPxPerSecond(fitPxPerSec);
+    }
+  }, [totalDuration]);
+
   if (totalDuration === 0 || segments.length === 0) return null;
 
   const visibleColors = Object.entries(SEGMENT_COLORS).filter(
     ([type]) => !(type === 'presenter2' && presenterCount < 2)
   );
 
-  const scaleCount = Math.ceil(totalDuration) + 1;
+  const { scale, scaleWidth } = computeScaleParams(pxPerSecond);
+  const scaleCount = Math.ceil(totalDuration / scale) + 1;
+
+  const formatLabel = () => {
+    if (pxPerSecond >= 1) return `${pxPerSecond.toFixed(0)}px/s`;
+    return `${(pxPerSecond * 60).toFixed(0)}px/min`;
+  };
 
   return (
-    <div style={{ marginBottom: '16px' }}>
+    <div ref={containerRef} style={{ marginBottom: '16px' }}>
       <div style={{ display: 'flex', marginBottom: '8px', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
         {visibleColors.map(([type, color]) => (
           <div key={type} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -226,9 +275,10 @@ const TimelineComponent: React.FC<TimelineComponentProps> = ({
         ))}
         <div style={{ marginLeft: 'auto' }}>
           <SpaceBetween direction="horizontal" size="xs">
-            <Button iconName="zoom-out" variant="icon" onClick={() => setScaleWidth((prev) => Math.max(40, prev - 40))} />
-            <span style={{ fontSize: '12px', minWidth: '60px', textAlign: 'center' }}>{scaleWidth}px/s</span>
-            <Button iconName="zoom-in" variant="icon" onClick={() => setScaleWidth((prev) => Math.min(500, prev + 40))} />
+            <Button variant="icon" iconName="zoom-to-fit" onClick={handleFitToView} ariaLabel="Fit to view" />
+            <Button iconName="zoom-out" variant="icon" onClick={handleZoomOut} />
+            <span style={{ fontSize: '12px', minWidth: '70px', textAlign: 'center' }}>{formatLabel()}</span>
+            <Button iconName="zoom-in" variant="icon" onClick={handleZoomIn} />
           </SpaceBetween>
         </div>
       </div>
@@ -261,7 +311,7 @@ const TimelineComponent: React.FC<TimelineComponentProps> = ({
             ref={timelineRef}
             editorData={editorData}
             effects={effects}
-            scale={1}
+            scale={scale}
             scaleWidth={scaleWidth}
             scaleSplitCount={10}
             startLeft={10}
