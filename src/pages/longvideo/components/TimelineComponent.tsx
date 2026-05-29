@@ -6,6 +6,46 @@ import { LongVideoSegment } from '../../../apis/longVideoSegment';
 import Button from '@cloudscape-design/components/button';
 import SpaceBetween from '@cloudscape-design/components/space-between';
 
+const timelineOverrideStyle = `
+.timeline-editor {
+  width: 100% !important;
+  height: auto !important;
+  min-height: 96px;
+  background-color: #fafafa !important;
+}
+.timeline-editor-edit-area {
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+}
+.timeline-editor-edit-area .ReactVirtualized__Grid {
+  overflow-x: scroll !important;
+  overflow-y: hidden !important;
+}
+.timeline-editor-edit-area .ReactVirtualized__Grid::-webkit-scrollbar {
+  height: 8px !important;
+}
+.timeline-editor-edit-area .ReactVirtualized__Grid::-webkit-scrollbar-thumb {
+  background: #888 !important;
+  border-radius: 4px !important;
+}
+.timeline-editor-time-area .ReactVirtualized__Grid {
+  overflow-x: scroll !important;
+}
+.timeline-editor-time-area .ReactVirtualized__Grid::-webkit-scrollbar {
+  display: none;
+}
+.timeline-editor-time-unit {
+  border-right-color: rgba(0,0,0,0.15) !important;
+}
+.timeline-editor-time-unit-scale {
+  color: #666 !important;
+}
+.timeline-editor-edit-row {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+`;
+
 interface TimelineComponentProps {
   segments: LongVideoSegment[];
   totalDuration: number;
@@ -264,8 +304,11 @@ const TimelineComponent: React.FC<TimelineComponentProps> = ({
     return `${(pxPerSecond * 60).toFixed(0)}px/min`;
   };
 
+  const timelineHeight = editorData.length * 32 + 32 + 8;
+
   return (
     <div ref={containerRef} style={{ marginBottom: '16px' }}>
+      <style>{timelineOverrideStyle}</style>
       <div style={{ display: 'flex', marginBottom: '8px', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
         {visibleColors.map(([type, color]) => (
           <div key={type} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -285,6 +328,7 @@ const TimelineComponent: React.FC<TimelineComponentProps> = ({
 
       <div style={{ display: 'flex', border: '1px solid #d5dbdb', borderRadius: '4px', overflow: 'hidden' }}>
         <div style={{ width: '50px', flexShrink: 0, borderRight: '1px solid #d5dbdb', backgroundColor: '#fafafa' }}>
+          <div style={{ height: '32px' }} />
           {editorData.map((row) => {
             return (
               <div
@@ -306,7 +350,7 @@ const TimelineComponent: React.FC<TimelineComponentProps> = ({
           })}
         </div>
 
-        <div style={{ flex: 1, height: `${editorData.length * 32 + 32}px`, minHeight: '96px' }}>
+        <div style={{ flex: 1, overflow: 'hidden' }}>
           <Timeline
             ref={timelineRef}
             editorData={editorData}
@@ -329,7 +373,7 @@ const TimelineComponent: React.FC<TimelineComponentProps> = ({
             onCursorDragEnd={handleCursorDragEnd}
             onActionResizeEnd={handleActionResizeEnd}
             onChange={handleChange}
-            style={{ width: '100%', height: '100%' }}
+            style={{ width: '100%', height: `${timelineHeight}px` }}
           />
         </div>
       </div>
