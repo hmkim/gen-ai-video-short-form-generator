@@ -268,7 +268,9 @@ Important: Return ALL {len(segments)} segments. Keep existing IDs. Respond only 
 
     messages = [{"role": "user", "content": [{"text": prompt}]}]
     system_prompts = [{"text": "You are an expert video editor analyzing webinar recordings to identify presenter segments and non-presentation sections. Be precise with segment classification."}]
-    inference_config = {"temperature": 0.3, "maxTokens": 16384}
+    inference_config = {"maxTokens": 16384}
+    if "opus" not in model_id:
+        inference_config["temperature"] = 0.3
 
     try:
         response = bedrock.converse(

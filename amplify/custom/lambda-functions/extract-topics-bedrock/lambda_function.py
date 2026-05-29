@@ -88,10 +88,11 @@ def get_topics_from_transcript(script, modelID, theme='general', num_videos=5):
 
     # inference 설정
     inference_config = {
-        "temperature": 0.5,
         "maxTokens": 4096,
-        "topP": 0.9
     }
+    if "opus" not in modelID:
+        inference_config["temperature"] = 0.5
+        inference_config["topP"] = 0.9
 
     try:
         # Bedrock API 호출

@@ -163,6 +163,11 @@ Return ONLY valid JSON:
 {"title": "...", "description": "...", "tags": ["tag1", "tag2"], "playlistName": "..."}`;
 
   try {
+    const inferenceConfig: { maxTokens: number; temperature?: number } = { maxTokens: 1024 };
+    if (!modelId.includes("opus")) {
+      inferenceConfig.temperature = 0.5;
+    }
+
     const response = await bedrockClient.send(
       new ConverseCommand({
         modelId: modelId,
@@ -172,7 +177,7 @@ Return ONLY valid JSON:
             text: "You are a YouTube SEO expert. Generate compelling, accurate video metadata. Respond with valid JSON only, no markdown.",
           },
         ],
-        inferenceConfig: { temperature: 0.5, maxTokens: 1024 },
+        inferenceConfig,
       })
     );
 

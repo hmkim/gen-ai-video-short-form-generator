@@ -227,7 +227,7 @@ CRITICAL NOTES:
 
             reasoning = ''
             text = ''
-            
+
             for chunk in content_blocks:
                 if "text" in chunk:
                     text = chunk["text"]
@@ -236,6 +236,25 @@ CRITICAL NOTES:
 
             print(f"Response text: {text}")
             print(f"Reasoning: {reasoning}")
+
+        else:
+            inference_config = {"maxTokens": 16384}
+            if "opus" not in modelID:
+                inference_config["temperature"] = 0.5
+            response = bedrock_runtime.converse(
+                modelId=modelID,
+                messages=messages,
+                system=system_prompts,
+                inferenceConfig=inference_config
+            )
+
+            content_blocks = response['output']["message"]["content"]
+            text = ''
+            for chunk in content_blocks:
+                if "text" in chunk:
+                    text = chunk["text"]
+
+            print(f"Response text: {text}")
 
         # Extract JSON from the response text
         start_idx = text.find('{')

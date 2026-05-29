@@ -148,10 +148,11 @@ IMPORTANT:
 
     # inference 설정
     inference_config = {
-        "temperature": 0,
         "maxTokens": 4096,
-        "topP": 0
     }
+    if "opus" not in modelID:
+        inference_config["temperature"] = 0
+        inference_config["topP"] = 0
 
     try:
         response = bedrock.converse(
