@@ -457,7 +457,13 @@ saveYouTubeChannelFunc.lambda.addToRolePolicy(
 const listFoundationModelsFunc = backend.listFoundationModelsFunction.resources;
 const testModelInvocationFunc = backend.testModelInvocationFunction.resources;
 
+// Cross-region inference profiles (us.*) route to foundation models in every
+// US region of the profile (us-east-1/us-east-2/us-west-2), so InvokeModel
+// needs the foundation-model ARN in all of them — not just us-west-2. The
+// inference-profile ARN itself stays scoped to us-west-2 (where we call from).
 const bedrockUsWest2Arns = [
+  "arn:aws:bedrock:us-east-1::foundation-model/*",
+  "arn:aws:bedrock:us-east-2::foundation-model/*",
   "arn:aws:bedrock:us-west-2::foundation-model/*",
   "arn:aws:bedrock:us-west-2:*:inference-profile/*",
 ];
