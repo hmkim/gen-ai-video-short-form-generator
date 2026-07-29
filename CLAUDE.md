@@ -28,7 +28,7 @@ This is a **GenAI video short-form generator** with two major feature paths:
 
 - **Frontend**: React 18 + TypeScript + Vite, using Cloudscape Design Components and Amplify UI React
 - **Backend**: AWS Amplify Gen2 (CDK-based), Python 3.12 Lambda functions, Step Functions
-- **AI/ML**: Amazon Bedrock (Claude 3.x, Nova, DeepSeek R1) in **us-west-2** region
+- **AI/ML**: Amazon Bedrock in **us-west-2** region. Supported models are defined in `src/data/modelList.tsx` and currently include Claude Opus 5, Claude 4.x (Opus 4.8/4.7/4.6/4.5/4.1, Sonnet 4.6/4.5/4, Haiku 4.5), Amazon Nova (Premier/Pro/Lite/Micro), Meta Llama 4 (Maverick/Scout) and Llama 3.3, and DeepSeek (R1, V3). Use cross-region inference profile IDs (`us.<provider>...`). Reasoning models (Claude/DeepSeek) flow through the UnifiedReasoning path.
 - **Video**: AWS MediaConvert for transcoding, Amazon Transcribe for speech-to-text
 
 ### Frontend (`src/`)
@@ -115,3 +115,7 @@ All Python 3.12 unless noted:
 - YouTube OAuth credentials stored in AWS Secrets Manager
 - Bedrock model access must be enabled in **us-west-2**
 
+### Deployment
+
+- Production is hosted on **AWS Amplify Hosting** (app ID `d32g3633tipi0o`, region `us-west-2`) at https://main.d32g3633tipi0o.amplifyapp.com. Pushing to the `main` branch triggers an auto-build/deploy via GitHub webhook.
+- `npx ampx sandbox` deploys a personal cloud sandbox for local dev (must stay running while `npm run dev` is active). See `DEPLOYMENT_STATUS.md` for current resource IDs (Cognito pool, AppSync APIs, etc.) and deploy history.
