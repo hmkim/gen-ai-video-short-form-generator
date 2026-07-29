@@ -280,7 +280,12 @@ Important: Return ALL {len(segments)} segments. Keep existing IDs. Respond only 
             inferenceConfig=inference_config
         )
 
-        raw_result = response['output']['message']['content'][0]['text']
+        # Opus 5 emits a reasoningContent block before the text block, so the
+        # text is not always content[0] — collect every text block.
+        raw_result = ''.join(
+            chunk['text'] for chunk in response['output']['message']['content']
+            if 'text' in chunk
+        )
 
         first_index = raw_result.find('{')
         end_index = raw_result.rfind('}')

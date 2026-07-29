@@ -165,7 +165,11 @@ IMPORTANT:
         if modelID == "anthropic.claude-3-sonnet-20240229-v1:0":
             time.sleep(60)
         
-        response_text = response['output']['message']['content'][0]['text']
+        # Opus 5는 reasoningContent 블록이 먼저 오므로 모든 text 블록을 수집한다.
+        response_text = ''.join(
+            chunk['text'] for chunk in response['output']['message']['content']
+            if 'text' in chunk
+        )
         
         print(response_text)
 

@@ -27,7 +27,9 @@ const REGION = 'us-west-2';
 
 // Fixed test prompt — never interpolates caller input (injection-safe).
 const TEST_PROMPT = 'Reply with the single word: OK';
-const TEST_MAX_TOKENS = 16;
+// Opus 5 reasons before answering by default, and thinking tokens count
+// against maxTokens — keep headroom so the text answer is not truncated.
+const TEST_MAX_TOKENS = 128;
 
 // Bedrock model id shape: provider.family-... with optional region prefix,
 // version (`-v1:0`) and inference-profile dots. Restrict to a safe charset.
@@ -93,16 +95,28 @@ export const handler: Schema['testModelInvocation']['functionHandler'] = async (
     };
   }
 
+  // Claude Opus models (4.7+) reject `temperature` — same guard as the
+  // pipeline Lambdas (`"opus" not in modelID`).
+  const inferenceConfig: { maxTokens: number; temperature?: number } = {
+    maxTokens: TEST_MAX_TOKENS,
+  };
+  if (!modelId.includes('opus')) {
+    inferenceConfig.temperature = 0;
+  }
+
   try {
     const response = await bedrockClient.send(
       new ConverseCommand({
         modelId,
         messages: [{ role: 'user', content: [{ text: TEST_PROMPT }] }],
-        inferenceConfig: { maxTokens: TEST_MAX_TOKENS, temperature: 0 },
+        inferenceConfig,
       }),
     );
 
-    const text = response.output?.message?.content?.[0]?.text ?? '';
+    // Reasoning models (Opus 5, DeepSeek R1) prepend a reasoningContent block,
+    // so the text block is not always content[0].
+    const blocks = response.output?.message?.content ?? [];
+    const text = blocks.map((block) => block.text ?? '').join('');
     const usage = response.usage;
     const succeeded = text.trim().length > 0;
 

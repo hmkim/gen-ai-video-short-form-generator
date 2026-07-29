@@ -103,8 +103,12 @@ def get_topics_from_transcript(script, modelID, theme='general', num_videos=5):
             inferenceConfig=inference_config
         )
 
-        # 응답에서 텍스트 추출
-        rawTopics = response['output']['message']['content'][0]['text']
+        # 응답에서 텍스트 추출 — Opus 5는 reasoningContent 블록이 먼저 오므로
+        # content[0]이 아닌 모든 text 블록을 수집한다.
+        rawTopics = ''.join(
+            chunk['text'] for chunk in response['output']['message']['content']
+            if 'text' in chunk
+        )
 
         # JSON 부분만 추출
         firstIndex = rawTopics.find('{')

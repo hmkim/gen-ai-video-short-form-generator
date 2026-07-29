@@ -12,6 +12,18 @@ export interface ModelOption {
 export const modelOptions: ModelOption[] = [
   // Anthropic
   {
+    name: "Claude Opus 5",
+    logo: "logos/anthropic-logo.png",
+    modelId: "us.anthropic.claude-opus-5",
+    provider: "Anthropic"
+  },
+  {
+    name: "Claude Opus 4.8",
+    logo: "logos/anthropic-logo.png",
+    modelId: "us.anthropic.claude-opus-4-8",
+    provider: "Anthropic"
+  },
+  {
     name: "Claude Opus 4.7",
     logo: "logos/anthropic-logo.png",
     modelId: "us.anthropic.claude-opus-4-7",
