@@ -14,7 +14,9 @@ npx ampx sandbox     # Deploy AWS cloud sandbox (must stay running during dev)
 npx ampx sandbox delete  # Tear down sandbox resources
 ```
 
-There is no test framework configured in this project.
+Frontend/resolver tests run on **Vitest** (`npm test`, config in `vitest.config.ts`, setup in `src/test/setup.ts`). Python Lambda unit tests use **pytest** (run from the Lambda's own directory, e.g. `cd amplify/custom/lambda-functions/detect-presenter-boundaries && python3 -m pytest`).
+
+`npm run build` runs `tsc` with `noUnusedLocals`/`noUnusedParameters` and `npm run lint` runs at `--max-warnings 0` — unused variables/imports and any lint warning fail the build/CI. Clean them up before considering a change done.
 
 ## Architecture
 
@@ -112,3 +114,4 @@ All Python 3.12 unless noted:
 - Lambda environment variables (`BUCKET_NAME`, `*_TABLE_NAME`, `STATE_MACHINE`, etc.) are set via CDK constructs in `backend.ts`, not `.env` files
 - YouTube OAuth credentials stored in AWS Secrets Manager
 - Bedrock model access must be enabled in **us-west-2**
+

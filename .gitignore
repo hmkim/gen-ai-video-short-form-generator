@@ -27,3 +27,14 @@ dist-ssr
 .amplify
 amplify_outputs*
 amplifyconfiguration*
+
+# Python bytecode
+__pycache__/
+
+# oh-my-claudecode runtime state (machine-local operational artifacts)
+.omc/
+
+# AI-DLC workspace — excluded from this repository entirely
+aidlc/
+.kiro/
+AGENTS.md
