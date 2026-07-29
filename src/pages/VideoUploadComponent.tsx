@@ -5,21 +5,17 @@ import { Container, Header, Tiles, Select, Alert, FormField, Input } from '@clou
 import { StorageManager } from '@aws-amplify/ui-react-storage';
 import { useNavigate } from 'react-router-dom';
 import { createHistory } from '../apis/history';
-import { modelOptions } from '../data/modelList';
+import { useApprovedModels, type ModelSelectOption } from '../data/useApprovedModels';
 
 const VideoUploadComponent: React.FC = () => {
 
-  const options = modelOptions.map(model => ({
-    label: model.name,
-    value: model.modelId,
-  }))
+  // U3 (F3): approved models from the dynamic catalog (static fallback inside the hook).
+  const { options, defaultOption, loading: modelsLoading } = useApprovedModels();
 
   const [tileValue, setTileValue] = useState("upload");
   const [uuid, setUuid] = useState("");
-  const [selectedModel, setSelectedModel] = useState({
-    label: "Claude Opus 4.7",
-    value: "us.anthropic.claude-opus-4-7",
-  });
+  const [selectedModel, setSelectedModel] = useState<ModelSelectOption | null>(null);
+  const effectiveModel = selectedModel ?? defaultOption;
   const [numberOfVideos, setNumberOfVideos] = useState("1");
   const [theme, setTheme] = useState("");
   const [videoLength, setVideoLength] = useState("60");
@@ -33,7 +29,7 @@ const VideoUploadComponent: React.FC = () => {
     
     const history = await createHistory(
       key, 
-      selectedModel.value,
+      effectiveModel.value,
       parseInt(numberOfVideos),
       theme || "general",
       parseInt(videoLength)
@@ -46,7 +42,7 @@ const VideoUploadComponent: React.FC = () => {
     
     const history = await createHistory(
       key, 
-      selectedModel.value,
+      effectiveModel.value,
       parseInt(numberOfVideos),
       theme || "general",
       parseInt(videoLength)
@@ -78,11 +74,13 @@ const VideoUploadComponent: React.FC = () => {
       />
       <h3>Select LLM</h3>
       <Select
-        selectedOption={selectedModel}
-        onChange={({ detail }) => 
-          setSelectedModel(detail.selectedOption as { label: string; value: string })
+        selectedOption={effectiveModel}
+        onChange={({ detail }) =>
+          setSelectedModel(detail.selectedOption as ModelSelectOption)
         }
         options={options}
+        statusType={modelsLoading ? "loading" : "finished"}
+        loadingText="모델을 불러오는 중…"
         placeholder="Select the LLM model"
       />
       <br />

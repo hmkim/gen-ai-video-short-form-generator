@@ -1,7 +1,7 @@
 import { defineBackend } from '@aws-amplify/backend';
 import { auth } from './auth/resource';
 import { storage } from './storage/resource';
-import { data, generateShortFunction, generateLongVideoOutputFunction, uploadToYouTubeFunction, suggestVideoMetadataFunction, exchangeYouTubeTokenFunction, checkYouTubeConnectionFunction, saveYouTubeChannelFunction } from './data/resource'
+import { data, generateShortFunction, generateLongVideoOutputFunction, uploadToYouTubeFunction, suggestVideoMetadataFunction, exchangeYouTubeTokenFunction, checkYouTubeConnectionFunction, saveYouTubeChannelFunction, listFoundationModelsFunction, testModelInvocationFunction } from './data/resource'
 import { GenerateShortStateMachine, VideoUploadStateMachine, UnifiedReasoningStateMachine, LongVideoProcessStateMachine, GenerateLongVideoStateMachine, YouTubeUpload } from './custom/resource';
 import { BucketDeployment, Source } from 'aws-cdk-lib/aws-s3-deployment';
 import { CfnBucket } from 'aws-cdk-lib/aws-s3';
@@ -21,6 +21,8 @@ const backend = defineBackend({
   exchangeYouTubeTokenFunction,
   checkYouTubeConnectionFunction,
   saveYouTubeChannelFunction,
+  listFoundationModelsFunction,
+  testModelInvocationFunction,
 });
 
 // Configure base resources
@@ -49,6 +51,7 @@ const longVideoEditTable = backend.data.resources.tables["LongVideoEdit"]
 const longVideoSegmentTable = backend.data.resources.tables["LongVideoSegment"]
 const longVideoOutputTable = backend.data.resources.tables["LongVideoOutput"]
 const youtubeUploadTable = backend.data.resources.tables["YouTubeUpload"]
+const managedModelTable = backend.data.resources.tables["ManagedModel"]
 
 // Create EventBridge resources first
 const eventStack = backend.createStack("EventBridgeStack");
@@ -443,3 +446,74 @@ saveYouTubeChannelFunc.lambda.addToRolePolicy(
     resources: ["*"],
   }),
 );
+
+// ============================================================
+// U3 (F3) Model Management resolvers
+// ============================================================
+// Both resolvers live in the data stack (suggestVideoMetadata precedent).
+// IAM is least-privilege: Bedrock scoped to us-west-2 provider ARNs, DynamoDB
+// scoped to the ManagedModel table only (infrastructure-design / security-requirements).
+
+const listFoundationModelsFunc = backend.listFoundationModelsFunction.resources;
+const testModelInvocationFunc = backend.testModelInvocationFunction.resources;
+
+const bedrockUsWest2Arns = [
+  "arn:aws:bedrock:us-west-2::foundation-model/*",
+  "arn:aws:bedrock:us-west-2:*:inference-profile/*",
+];
+
+// listFoundationModels: discover models + write catalog.
+listFoundationModelsFunc.lambda.addToRolePolicy(
+  new PolicyStatement({
+    effect: Effect.ALLOW,
+    actions: ["bedrock:ListFoundationModels"],
+    // ListFoundationModels is a control-plane action scoped at the service level.
+    resources: ["*"],
+  }),
+);
+
+listFoundationModelsFunc.lambda.addToRolePolicy(
+  new PolicyStatement({
+    effect: Effect.ALLOW,
+    actions: [
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+      "dynamodb:Query",
+      "dynamodb:Scan",
+    ],
+    resources: [managedModelTable.tableArn, `${managedModelTable.tableArn}/index/*`],
+  }),
+);
+
+listFoundationModelsFunc.cfnResources.cfnFunction.environment = {
+  variables: {
+    MANAGED_MODEL_TABLE_NAME: managedModelTable.tableName,
+  },
+};
+
+// testModelInvocation: invoke a model + stamp the test result.
+testModelInvocationFunc.lambda.addToRolePolicy(
+  new PolicyStatement({
+    effect: Effect.ALLOW,
+    actions: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+    resources: bedrockUsWest2Arns,
+  }),
+);
+
+testModelInvocationFunc.lambda.addToRolePolicy(
+  new PolicyStatement({
+    effect: Effect.ALLOW,
+    actions: [
+      "dynamodb:UpdateItem",
+      "dynamodb:Query",
+      "dynamodb:Scan",
+    ],
+    resources: [managedModelTable.tableArn, `${managedModelTable.tableArn}/index/*`],
+  }),
+);
+
+testModelInvocationFunc.cfnResources.cfnFunction.environment = {
+  variables: {
+    MANAGED_MODEL_TABLE_NAME: managedModelTable.tableName,
+  },
+};

@@ -47,6 +47,19 @@ export const saveYouTubeChannelFunction = defineFunction({
   timeoutSeconds: 10,
 });
 
+// U3 (F3) model management resolvers — see U3-model-management design refs.
+export const listFoundationModelsFunction = defineFunction({
+  entry: "./listFoundationModels.ts",
+  resourceGroupName: "data",
+  timeoutSeconds: 30,
+});
+
+export const testModelInvocationFunction = defineFunction({
+  entry: "./testModelInvocation.ts",
+  resourceGroupName: "data",
+  timeoutSeconds: 60,
+});
+
 const schema = a.schema({
   History: a
     .model({
@@ -143,6 +156,28 @@ const schema = a.schema({
       uploadStartedAt: a.string(),
     })
     .authorization((allow) => [allow.authenticated()]),
+
+  // U3 (F3): managed model catalog. Public catalog for a single-operator app —
+  // `allow.authenticated()` mirrors Gallery/YouTubeUpload and avoids the
+  // owner-scoped empty-dropdown trap (functional-design Q1=A).
+  ManagedModel: a
+    .model({
+      modelId: a.string().required(),
+      displayName: a.string().required(),
+      provider: a.string().required(),
+      status: a.enum(['APPROVED', 'PENDING', 'HIDDEN']),
+      isDefault: a.boolean().default(false),
+      lastTestedAt: a.datetime(),
+      lastTestResult: a.string(),
+      costHint: a.string(),
+    })
+    .authorization((allow) => [allow.authenticated()]),
+
+  ModelTestResult: a.customType({
+    ok: a.boolean().required(),
+    message: a.string().required(),
+    costHint: a.string(),
+  }),
 
   StageChanged: a.customType({
     videoId: a.string().required(),
@@ -263,6 +298,24 @@ const schema = a.schema({
     .returns(a.string())
     .authorization((allow) => [allow.authenticated()])
     .handler(a.handler.function(saveYouTubeChannelFunction)),
+
+  // U3 (F3): discover us-west-2 foundation models and upsert into ManagedModel.
+  listFoundationModels: a.query()
+    .arguments({
+      refresh: a.boolean(),
+    })
+    .returns(a.ref('ManagedModel').array())
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(listFoundationModelsFunction)),
+
+  // U3 (F3): single fixed-prompt Converse call to verify model access.
+  testModelInvocation: a.query()
+    .arguments({
+      modelId: a.string().required(),
+    })
+    .returns(a.ref('ModelTestResult'))
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(testModelInvocationFunction)),
 
 });
 

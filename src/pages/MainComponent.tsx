@@ -62,6 +62,9 @@ const MainComponent: React.FC<MainComponentProps> = (props) => {
                 { type: 'link', text: `YouTube Uploads`, href: `/youtube/uploads` },
                 { type: 'link', text: `YouTube Settings`, href: `/youtube/connect` },
               ]},
+              { type: 'section-group', title: '관리자 설정', items: [
+                { type: 'link', text: `모델 관리`, href: `/admin/models` },
+              ]},
             ]}
           />
         }

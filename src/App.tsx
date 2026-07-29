@@ -17,6 +17,7 @@ import LongVideoOutputComponent from './pages/longvideo/LongVideoOutputComponent
 import YouTubeConnectComponent from './pages/youtube/YouTubeConnectComponent';
 import YouTubeCallbackComponent from './pages/youtube/YouTubeCallbackComponent';
 import YouTubeUploadsComponent from './pages/youtube/YouTubeUploadsComponent';
+import ModelManagementComponent from './pages/admin/ModelManagementComponent';
 
 
 Amplify.configure(outputs);
@@ -41,6 +42,7 @@ function App() {
               <Route path="/youtube/connect" element={<YouTubeConnectComponent />} />
               <Route path="/youtube/callback" element={<YouTubeCallbackComponent />} />
               <Route path="/youtube/uploads" element={<YouTubeUploadsComponent />} />
+              <Route path="/admin/models" element={<ModelManagementComponent />} />
             </Route>
           </Routes>
         </BrowserRouter>

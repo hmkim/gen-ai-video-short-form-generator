@@ -3,18 +3,14 @@ import { Container, Header, Select, FormField, Input, RadioGroup } from '@clouds
 import { StorageManager } from '@aws-amplify/ui-react-storage';
 import { useNavigate } from 'react-router-dom';
 import { createLongVideoEdit } from '../../apis/longVideoEdit';
-import { modelOptions } from '../../data/modelList';
+import { useApprovedModels, type ModelSelectOption } from '../../data/useApprovedModels';
 
 const LongVideoUploadComponent: React.FC = () => {
-  const options = modelOptions.map(model => ({
-    label: model.name,
-    value: model.modelId,
-  }));
+  // U3 (F3): approved models from the dynamic catalog (static fallback inside the hook).
+  const { options, defaultOption, loading: modelsLoading } = useApprovedModels();
 
-  const [selectedModel, setSelectedModel] = useState({
-    label: "Claude Opus 4.7",
-    value: "us.anthropic.claude-opus-4-7",
-  });
+  const [selectedModel, setSelectedModel] = useState<ModelSelectOption | null>(null);
+  const effectiveModel = selectedModel ?? defaultOption;
   const [presenterCount, setPresenterCount] = useState(2);
   const [presenter1Name, setPresenter1Name] = useState("Presenter 1");
   const [presenter2Name, setPresenter2Name] = useState("Presenter 2");
@@ -23,7 +19,7 @@ const LongVideoUploadComponent: React.FC = () => {
   const processFile = async ({ file, key }: { file: File; key: string }) => {
     const edit = await createLongVideoEdit(
       key,
-      selectedModel.value,
+      effectiveModel.value,
       presenterCount,
       presenter1Name,
       presenterCount >= 2 ? presenter2Name : undefined,
@@ -42,11 +38,13 @@ const LongVideoUploadComponent: React.FC = () => {
     >
       <h3>Select LLM</h3>
       <Select
-        selectedOption={selectedModel}
+        selectedOption={effectiveModel}
         onChange={({ detail }) =>
-          setSelectedModel(detail.selectedOption as { label: string; value: string })
+          setSelectedModel(detail.selectedOption as ModelSelectOption)
         }
         options={options}
+        statusType={modelsLoading ? "loading" : "finished"}
+        loadingText="모델을 불러오는 중…"
         placeholder="Select the LLM model"
       />
       <br />
