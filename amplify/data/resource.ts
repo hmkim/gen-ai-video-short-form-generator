@@ -106,6 +106,9 @@ const schema = a.schema({
       presenterCount: a.integer().default(2),
       presenter1Name: a.string().default("Presenter 1"),
       presenter2Name: a.string(),
+      // U5 (F5b): Vision opt-in flag. Default false → no Vision call, zero cost.
+      // The LongVideoProcess state machine reads this to branch on AnalyzeVideoFrames.
+      visionEnabled: a.boolean().default(false),
       segments: a.hasMany("LongVideoSegment", "longVideoEditId"),
       outputs: a.hasMany("LongVideoOutput", "longVideoEditId"),
     })

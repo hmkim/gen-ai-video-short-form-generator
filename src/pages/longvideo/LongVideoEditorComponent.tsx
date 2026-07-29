@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
   Container, Header, SpaceBetween, Button, Box, Spinner,
-  FormField, Input, Alert, ColumnLayout, StatusIndicator, Modal,
+  FormField, Input, Alert, ColumnLayout, StatusIndicator, Modal, Toggle,
 } from '@cloudscape-design/components';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getUrl } from 'aws-amplify/storage';
@@ -29,6 +29,11 @@ const LongVideoEditorComponent: React.FC = () => {
   const [presenter2Name, setPresenter2Name] = useState("Presenter 2");
   const [generatingPresenter, setGeneratingPresenter] = useState<number | null>(null);
 
+  // U5 (F5b): Vision opt-in. Default OFF — turning it on shows a cost-notice
+  // modal before persisting visionEnabled on the LongVideoEdit record.
+  const [visionEnabled, setVisionEnabled] = useState(false);
+  const [showVisionConfirm, setShowVisionConfirm] = useState(false);
+
   // Track existing outputs per presenter
   const [existingOutputs, setExistingOutputs] = useState<Record<number, LongVideoOutput | null>>({});
   const [confirmRegenerate, setConfirmRegenerate] = useState<number | null>(null);
@@ -42,6 +47,7 @@ const LongVideoEditorComponent: React.FC = () => {
         setPresenterCount(edit.presenterCount ?? 2);
         setPresenter1Name(edit.presenter1Name || "Presenter 1");
         setPresenter2Name(edit.presenter2Name || "Presenter 2");
+        setVisionEnabled(edit.visionEnabled ?? false);
       }
     });
 
@@ -139,6 +145,25 @@ const LongVideoEditorComponent: React.FC = () => {
     await updateLongVideoEdit(id, { presenter1Name, presenter2Name });
   };
 
+  // U5 (F5b): toggling ON requires explicit cost confirmation; OFF persists
+  // immediately (turning analysis off should never be gated).
+  const handleVisionToggle = async (checked: boolean) => {
+    if (!id) return;
+    if (checked) {
+      setShowVisionConfirm(true);
+      return;
+    }
+    setVisionEnabled(false);
+    await updateLongVideoEdit(id, { visionEnabled: false });
+  };
+
+  const handleVisionConfirm = async () => {
+    if (!id) return;
+    setVisionEnabled(true);
+    setShowVisionConfirm(false);
+    await updateLongVideoEdit(id, { visionEnabled: true });
+  };
+
   const handleSegmentUpdate = async (segmentId: string, startTime: number, endTime: number) => {
     await updateSegment(segmentId, { startTime, endTime });
     setSegments(prev =>
@@ -170,7 +195,21 @@ const LongVideoEditorComponent: React.FC = () => {
   return (
     <SpaceBetween size="l">
       <Container header={<Header variant="h2">Long Video Editor</Header>}>
-        {stage < LONG_VIDEO_STAGE.TRANSCRIBED && (
+        <SpaceBetween size="m">
+          <FormField
+            label="Vision 분석으로 정확도 향상"
+            description="켜면 화자 전환 구간의 영상 프레임을 AI Vision으로 분석해 발표자 인식 정확도를 높입니다. 영상당 약 $0.05–0.60의 추가 비용이 발생할 수 있습니다 (기본 꺼짐 · 분석 구간 최대 10개로 제한)."
+          >
+            <Toggle
+              checked={visionEnabled}
+              onChange={({ detail }) => handleVisionToggle(detail.checked)}
+              data-testid="vision-optin-toggle"
+            >
+              {visionEnabled ? "켜짐" : "꺼짐"}
+            </Toggle>
+          </FormField>
+
+          {stage < LONG_VIDEO_STAGE.TRANSCRIBED && (
           <Alert type="info">
             Video is being transcribed with speaker diarization. Please wait...
             <Box margin={{ top: "s" }}><Spinner /></Box>
@@ -206,6 +245,7 @@ const LongVideoEditorComponent: React.FC = () => {
             </ColumnLayout>
           </SpaceBetween>
         )}
+        </SpaceBetween>
       </Container>
 
       {videoUrl && (
@@ -344,6 +384,34 @@ const LongVideoEditorComponent: React.FC = () => {
           Regenerating will create a new video based on the current segment selections.
           The previous video will remain available until the new one is ready.
         </Box>
+      </Modal>
+
+      {/* U5 (F5b): Vision opt-in cost-confirmation modal */}
+      <Modal
+        visible={showVisionConfirm}
+        onDismiss={() => setShowVisionConfirm(false)}
+        header="Vision 분석 켜기"
+        footer={
+          <Box float="right">
+            <SpaceBetween size="xs" direction="horizontal">
+              <Button variant="link" onClick={() => setShowVisionConfirm(false)}>취소</Button>
+              <Button variant="primary" onClick={handleVisionConfirm} data-testid="vision-confirm-enable">
+                켜기
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+      >
+        <SpaceBetween size="s">
+          <Box>
+            Vision 분석을 켜면 다음 처리부터 화자 전환 구간의 영상 프레임을 AI Vision으로 분석해
+            발표자 인식 정확도를 높입니다.
+          </Box>
+          <Alert type="warning">
+            영상당 약 <strong>$0.05–0.60</strong>의 추가 비용이 발생할 수 있습니다. 비용 통제를 위해
+            분석 구간은 최대 10개로 제한되며, 저비용 Vision 모델을 사용합니다. 끄면 추가 비용은 발생하지 않습니다.
+          </Alert>
+        </SpaceBetween>
       </Modal>
     </SpaceBetween>
   );

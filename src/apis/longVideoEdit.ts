@@ -53,6 +53,7 @@ export const updateLongVideoEdit = async (
     presenterCount?: number;
     presenter1Name?: string;
     presenter2Name?: string;
+    visionEnabled?: boolean;
   }
 ) => {
   const { data: updated } = await client.models.LongVideoEdit.update({ id, ...updates });

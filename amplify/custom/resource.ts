@@ -10,6 +10,7 @@ export { UnifiedReasoningStateMachine } from './step-functions/UnifiedReasoningS
 export { UnifiedReasoning } from './UnifiedReasoning/resource';
 export { DetectPresenterBoundaries } from './DetectPresenterBoundaries/resource';
 export { AnalyzePresenterSegments } from './AnalyzePresenterSegments/resource';
+export { AnalyzeVideoFrames } from './AnalyzeVideoFrames/resource';
 export { GenerateLongVideoOutput } from './GenerateLongVideoOutput/resource';
 export { YouTubeUpload } from './YouTubeUpload/resource';
 export { LongVideoProcessStateMachine } from './step-functions/LongVideoProcessStateMachine';

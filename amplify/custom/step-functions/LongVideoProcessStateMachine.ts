@@ -6,7 +6,7 @@ import { Duration } from 'aws-cdk-lib/core';
 import { ITable } from 'aws-cdk-lib/aws-dynamodb';
 import { Role, ServicePrincipal, PolicyDocument, PolicyStatement } from 'aws-cdk-lib/aws-iam'
 
-import { DetectPresenterBoundaries, AnalyzePresenterSegments } from '../resource';
+import { DetectPresenterBoundaries, AnalyzePresenterSegments, AnalyzeVideoFrames } from '../resource';
 
 type LongVideoProcessStateMachineProps = {
   bucket: IBucket,
@@ -31,6 +31,14 @@ export class LongVideoProcessStateMachine extends Construct {
       bucket: props.bucket,
       longVideoEditTable: props.longVideoEditTable,
       longVideoSegmentTable: props.longVideoSegmentTable,
+    });
+
+    // U5 (F5b): Vision opt-in frame analyzer. Instantiated inside this construct
+    // (StepFunctionStack) so the ARN reference to the custom Lambda is one-way
+    // (StepFunctionStack -> Lambda), avoiding a cross-stack cycle — same pattern
+    // as AnalyzePresenterSegments above.
+    const analyzeVideoFrames = new AnalyzeVideoFrames(this, "AnalyzeVideoFramesFunc", {
+      bucket: props.bucket,
     });
 
     // Helper functions
@@ -145,10 +153,60 @@ export class LongVideoProcessStateMachine extends Construct {
         "segments.$": "$.boundaryResult.segments",
         "boundaries.$": "$.boundaryResult.boundaries",
         "speech_ratio_metadata.$": "$.boundaryResult.speech_ratio_metadata",
-        "presenterCount.$": "$.boundaryResult.presenterCount"
+        "presenterCount.$": "$.boundaryResult.presenterCount",
+        // U5 (F5b): visual_analysis is [] on the OFF/degraded path (set by the
+        // NoVisionAnalysis Pass) and populated on the ON path. The Lambda is
+        // backward-compatible and treats [] as "no visual hints".
+        "visual_analysis.$": "$.visionResult.visual_analysis"
       }),
       resultPath: "$.analysisResult"
     });
+
+    // U5 (F5b): Vision frame-analysis task. Retries transient Lambda errors,
+    // and on any failure Catches to the audio-only path (graceful degrade).
+    const analyzeVideoFramesTask = new tasks.LambdaInvoke(this, 'AnalyzeVideoFrames', {
+      lambdaFunction: analyzeVideoFrames.handler,
+      payload: sfn.TaskInput.fromObject({
+        "uuid.$": "$.uuid",
+        "bucket_name.$": "$.bucket_name",
+        "segments.$": "$.boundaryResult.segments",
+        "boundaries.$": "$.boundaryResult.boundaries",
+        "speech_ratio_metadata.$": "$.boundaryResult.speech_ratio_metadata",
+        "presenterCount.$": "$.boundaryResult.presenterCount"
+      }),
+      resultSelector: {
+        "visual_analysis.$": "$.Payload.visual_analysis"
+      },
+      resultPath: "$.visionResult"
+    });
+
+    // OFF / graceful-degrade path: inject an empty visual_analysis so the
+    // downstream AnalyzePresenterSegments input path always resolves.
+    const noVisionAnalysis = new sfn.Pass(this, 'NoVisionAnalysis', {
+      result: sfn.Result.fromObject({ visual_analysis: [] }),
+      resultPath: "$.visionResult"
+    });
+
+    analyzeVideoFramesTask.addRetry({
+      errors: [
+        'Lambda.ServiceException',
+        'Lambda.AWSLambdaException',
+        'Lambda.SdkClientException',
+        'Lambda.TooManyRequestsException'
+      ],
+      interval: Duration.seconds(2),
+      maxAttempts: 2,
+      backoffRate: 2
+    });
+    // Any unhandled failure -> degrade to the audio-only path (pipeline not blocked).
+    analyzeVideoFramesTask.addCatch(noVisionAnalysis, {
+      errors: ['States.ALL'],
+      resultPath: "$.visionError"
+    });
+
+    // Choice: only analyze frames when the edit record opted in (visionEnabled=true).
+    // isPresent guards records created before this field existed (treated as OFF).
+    const visionChoice = new sfn.Choice(this, 'IsVisionEnabled');
 
     const sharedUpdateDDB1 = updateDDB(1);
 
@@ -172,7 +230,23 @@ export class LongVideoProcessStateMachine extends Construct {
     sharedUpdateDDB1
       .next(updateEvent(1))
       .next(detectBoundariesTask)
-      .next(analyzeSegmentsTask)
+      .next(visionChoice)
+
+    // U5 (F5b): branch on visionEnabled, then both paths converge on segment analysis.
+    visionChoice
+      .when(
+        sfn.Condition.and(
+          sfn.Condition.isPresent("$.editInfo.Item.visionEnabled.BOOL"),
+          sfn.Condition.booleanEquals("$.editInfo.Item.visionEnabled.BOOL", true)
+        ),
+        analyzeVideoFramesTask
+      )
+      .otherwise(noVisionAnalysis);
+
+    analyzeVideoFramesTask.next(analyzeSegmentsTask);
+    noVisionAnalysis.next(analyzeSegmentsTask);
+
+    analyzeSegmentsTask
       .next(updateDDB(2))
       .next(updateEvent(2))
 
