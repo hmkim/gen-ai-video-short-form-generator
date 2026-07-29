@@ -51,12 +51,14 @@ const MainComponent: React.FC<MainComponentProps> = (props) => {
               text: 'Video Creator',
             }}
             items={[
+              { type: 'link', text: `업로드 (통합)`, href: `/upload` },
+              { type: 'divider' },
               { type: 'section-group', title: 'Short-form', items: [
                 { type: 'link', text: `Create Short-form`, href: `/` },
                 { type: 'link', text: `Short-form History`, href: `/history` },
                 { type: 'link', text: `Short-form Gallery`, href: `/gallery` },
               ]},
-              { type: 'section-group', title: 'Long Video for YouTube', items: [
+              { type: 'section-group', title: '화자별 영상 편집 · YouTube 자동 업로드', items: [
                 { type: 'link', text: `Upload Long Video`, href: `/longvideo` },
                 { type: 'link', text: `Long Video History`, href: `/longvideo/history` },
                 { type: 'link', text: `YouTube Uploads`, href: `/youtube/uploads` },
