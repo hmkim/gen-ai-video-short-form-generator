@@ -158,3 +158,10 @@ YouTube 업로드로 진입하면 업로드된 리스트가 보입니다.
 **Context**: OPERATIONS - 배포 승인
 
 ---
+## 배포 및 실환경 검증 완료
+**Timestamp**: 2026-07-30T08:20:00Z
+**User Input**: (배포 승인 "yes" 후 자동 진행)
+**AI Response**: "Job #36 SUCCEED, 스택 UPDATE_COMPLETE, Video 테이블 생성 확인, 사이트 HTTP 200. 실환경 트리거 검증(프로브 객체 3종): 라이브러리 키 → 양쪽 SFN 모두 미실행(AC-8.3 ✓), RAW.mp4 → 쇼츠 SFN만(AC-8.2 ✓), LONG_RAW.mp4 → 화자별 SFN만 — 쇼츠 SFN 입력이 RAW 프로브 키였음을 확인, 이중 트리거 버그 해소(AC-8.1 ✓). 프로브 실행 중지·객체 삭제 완료. AI-DLC 워크플로우 종료"
+**Context**: OPERATIONS - 배포 검증 완료. 전체 워크플로우 완료
+
+---

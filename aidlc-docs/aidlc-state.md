@@ -3,7 +3,7 @@
 ## Project Information
 - **Project Type**: Brownfield
 - **Start Date**: 2026-07-29T05:10:00Z
-- **Current Stage**: CONSTRUCTION 완료 — 배포 대기 (사용자 확인 필요)
+- **Current Stage**: 완료 — 배포·실환경 검증 완료 (2026-07-30, Job #36)
 
 ## Workspace State
 - **Existing Code**: Yes
