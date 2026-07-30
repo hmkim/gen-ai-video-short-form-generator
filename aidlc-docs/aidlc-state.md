@@ -3,7 +3,7 @@
 ## Project Information
 - **Project Type**: Brownfield
 - **Start Date**: 2026-07-29T05:10:00Z
-- **Current Stage**: Iteration 2 (simple-fixes) 구현 완료 — 배포 대기
+- **Current Stage**: Iteration 2 완료 — 배포·실환경 검증 완료 (2026-07-30, Job #38)
 
 ## Workspace State
 - **Existing Code**: Yes

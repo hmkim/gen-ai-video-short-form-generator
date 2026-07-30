@@ -201,3 +201,10 @@ YouTube 업로드로 진입하면 업로드된 리스트가 보입니다.
 **Context**: Iteration 2 배포 승인
 
 ---
+## Iteration 2 배포 및 실환경 검증 완료
+**Timestamp**: 2026-07-30T09:50:00Z
+**User Input**: (배포 승인 "커밋 + push 진행" 후 자동 진행)
+**AI Response**: "Job #38 SUCCEED. Video.fileName 스키마 반영 확인, 사이트 HTTP 200. R1 실검증: PENDING 행 1개 삭제 후 AppSync 경유(SigV4)로 listFoundationModels(refresh:true) 호출 — 신규 발견 경로에서 GraphQL errors 없음, 재발견 항목에 createdAt/updatedAt 정상 포함, null 타임스탬프 0건. 버그 재현 조건에서 수정 확인 완료"
+**Context**: Iteration 2 완료 — 배포·검증 종료
+
+---
