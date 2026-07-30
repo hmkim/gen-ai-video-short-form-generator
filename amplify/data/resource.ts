@@ -167,6 +167,9 @@ const schema = a.schema({
     .model({
       title: a.string().required(),
       s3Key: a.string().required(),
+      // iteration 2 (R3): 원본 파일명 보존 — 제목 수정과 무관하게 유지.
+      // 기존 레코드는 null (화면에서 '-' 표시).
+      fileName: a.string(),
       sizeBytes: a.integer(),
       status: a.enum(['UPLOADED']),
     })

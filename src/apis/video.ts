@@ -4,7 +4,7 @@
 // 순수 로직(키 생성·병합)은 src/data/videoLibrary.ts에 있고 여기는 I/O만 담당.
 
 import { generateClient } from 'aws-amplify/data';
-import { copy, list } from 'aws-amplify/storage';
+import { copy, list, remove } from 'aws-amplify/storage';
 import type { Schema } from '../../amplify/data/resource';
 
 const client = generateClient<Schema>({ authMode: 'userPool' });
@@ -15,14 +15,33 @@ export const createVideo = async (
   title: string,
   s3Key: string,
   sizeBytes?: number,
+  fileName?: string,
 ) => {
   const { data: video } = await client.models.Video.create({
     title,
     s3Key,
+    fileName,
     sizeBytes,
     status: 'UPLOADED',
   });
   return video;
+};
+
+/** R3: 제목 수정 — fileName/s3Key는 불변. */
+export const updateVideoTitle = async (id: string, title: string) => {
+  const { data: video } = await client.models.Video.update({ id, title });
+  return video;
+};
+
+/**
+ * R3: 라이브러리 영상 삭제 — 레코드 + S3 원본. 파이프라인 복사본
+ * (videos/{recordId}/...)은 독립 객체라 기존 처리 결과에 영향 없다.
+ * S3 삭제 실패 시 레코드는 남겨 재시도 가능하게 한다.
+ */
+export const deleteVideoWithObject = async (video: Pick<Video, 'id' | 's3Key'>) => {
+  await remove({ path: video.s3Key });
+  const { data: deleted } = await client.models.Video.delete({ id: video.id });
+  return deleted;
 };
 
 export const fetchVideos = async (): Promise<Video[]> => {

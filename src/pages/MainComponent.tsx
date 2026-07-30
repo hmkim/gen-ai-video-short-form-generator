@@ -54,6 +54,7 @@ const MainComponent: React.FC<MainComponentProps> = (props) => {
               // upload-library (US-7): 라벨=동작 정합 — 업로드는 /upload에서만,
               // 쇼츠만들기/화자별 편집은 업로드된 영상 선택으로 시작한다.
               { type: 'link', text: `영상 업로드`, href: `/upload` },
+              { type: 'link', text: `내 라이브러리`, href: `/library` },
               { type: 'divider' },
               { type: 'section-group', title: '쇼츠', items: [
                 { type: 'link', text: `쇼츠만들기`, href: `/` },

@@ -6,6 +6,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import UnifiedUploadComponent from '../UnifiedUploadComponent';
+import LibraryManageComponent from '../LibraryManageComponent';
 import VideoPicker from '../VideoPicker';
 import type { SelectableVideo } from '../../data/videoLibrary';
 
@@ -21,11 +22,16 @@ vi.mock('@aws-amplify/ui-react-storage', () => ({
   StorageManager: () => <div data-testid="storage-manager-stub" />,
 }));
 
-const { mockFetchVideos, mockListKeys, mockFetchHistory, mockFetchEdits } = vi.hoisted(() => ({
+const {
+  mockFetchVideos, mockListKeys, mockFetchHistory, mockFetchEdits,
+  mockUpdateVideoTitle, mockDeleteVideoWithObject,
+} = vi.hoisted(() => ({
   mockFetchVideos: vi.fn(),
   mockListKeys: vi.fn(),
   mockFetchHistory: vi.fn(),
   mockFetchEdits: vi.fn(),
+  mockUpdateVideoTitle: vi.fn(),
+  mockDeleteVideoWithObject: vi.fn(),
 }));
 
 vi.mock('../../apis/video', () => ({
@@ -33,6 +39,8 @@ vi.mock('../../apis/video', () => ({
   fetchVideos: mockFetchVideos,
   listExistingSourceKeys: mockListKeys,
   copyToPipeline: vi.fn(),
+  updateVideoTitle: mockUpdateVideoTitle,
+  deleteVideoWithObject: mockDeleteVideoWithObject,
 }));
 vi.mock('../../apis/history', () => ({
   fetchHistory: mockFetchHistory,
@@ -45,34 +53,85 @@ vi.mock('../../apis/longVideoEdit', () => ({
   deleteLongVideoEdit: vi.fn(),
 }));
 
-describe('UnifiedUploadComponent (영상 라이브러리, US-1/US-2)', () => {
+describe('UnifiedUploadComponent (영상 업로드 전용, US-1 + R2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('업로드 UI(제목 입력 + 업로더)가 보인다 — 라우팅 카드가 아니라 실제 업로드 화면 (AC-1.1)', () => {
+    render(<MemoryRouter><UnifiedUploadComponent /></MemoryRouter>);
+    expect(screen.getByTestId('library-title-input')).toBeInTheDocument();
+    expect(screen.getByTestId('storage-manager-stub')).toBeInTheDocument();
+  });
+
+  it('R2: 업로드 화면에는 목록이 없고 내 라이브러리로의 이동 경로가 있다', () => {
+    render(<MemoryRouter><UnifiedUploadComponent /></MemoryRouter>);
+    expect(screen.queryByTestId('library-manage-table')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('내 라이브러리'));
+    expect(mockNavigate).toHaveBeenCalledWith('/library');
+  });
+});
+
+describe('LibraryManageComponent (내 라이브러리 관리, R3)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockFetchVideos.mockResolvedValue([]);
   });
 
-  it('업로드 UI(제목 입력 + 업로더)가 보인다 — 라우팅 카드가 아니라 실제 업로드 화면 (AC-1.1)', async () => {
-    render(<MemoryRouter><UnifiedUploadComponent /></MemoryRouter>);
-    expect(screen.getByTestId('library-title-input')).toBeInTheDocument();
-    expect(screen.getByTestId('storage-manager-stub')).toBeInTheDocument();
-    await waitFor(() => expect(mockFetchVideos).toHaveBeenCalled());
-  });
-
-  it('라이브러리가 비어 있으면 빈 상태 안내가 보인다 (AC-2.2)', async () => {
-    render(<MemoryRouter><UnifiedUploadComponent /></MemoryRouter>);
+  it('라이브러리가 비어 있으면 빈 상태 안내가 보인다', async () => {
+    render(<MemoryRouter><LibraryManageComponent /></MemoryRouter>);
     await waitFor(() =>
       expect(screen.getByTestId('library-empty-state')).toBeInTheDocument(),
     );
   });
 
-  it('업로드된 영상이 목록에 제목·일시와 함께 보인다 (AC-2.1)', async () => {
+  it('영상이 제목·파일명·크기와 함께 보인다 (파일명 없으면 - 표시)', async () => {
     mockFetchVideos.mockResolvedValue([
       { id: 'v1', title: '웨비나 본편', s3Key: 'videos/library/v1/SOURCE.mp4',
-        sizeBytes: 1024 * 1024 * 100, createdAt: '2026-07-01T00:00:00.000Z' },
+        fileName: 'GMT-recording.mp4', sizeBytes: 1024 * 1024 * 100,
+        createdAt: '2026-07-01T00:00:00.000Z' },
+      { id: 'v2', title: '구버전 영상', s3Key: 'videos/library/v2/SOURCE.mp4',
+        fileName: null, sizeBytes: null, createdAt: '2026-06-01T00:00:00.000Z' },
     ]);
-    render(<MemoryRouter><UnifiedUploadComponent /></MemoryRouter>);
+    render(<MemoryRouter><LibraryManageComponent /></MemoryRouter>);
     await waitFor(() => expect(screen.getByText('웨비나 본편')).toBeInTheDocument());
+    expect(screen.getByText('GMT-recording.mp4')).toBeInTheDocument();
     expect(screen.getByText('100 MB')).toBeInTheDocument();
+    expect(screen.getByText('구버전 영상')).toBeInTheDocument();
+  });
+
+  it('제목 수정: 모달에서 저장하면 updateVideoTitle 호출, 빈 제목은 저장 불가', async () => {
+    mockFetchVideos.mockResolvedValue([
+      { id: 'v1', title: '원래 제목', s3Key: 'videos/library/v1/SOURCE.mp4',
+        fileName: 'a.mp4', sizeBytes: 1, createdAt: '2026-07-01T00:00:00.000Z' },
+    ]);
+    render(<MemoryRouter><LibraryManageComponent /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByTestId('library-rename-v1')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('library-rename-v1'));
+
+    const input = screen.getByTestId('library-rename-input').querySelector('input')!;
+    fireEvent.change(input, { target: { value: '' } });
+    expect(screen.getByTestId('library-rename-confirm')).toBeDisabled();
+
+    fireEvent.change(input, { target: { value: '새 제목' } });
+    fireEvent.click(screen.getByTestId('library-rename-confirm'));
+    await waitFor(() => expect(mockUpdateVideoTitle).toHaveBeenCalledWith('v1', '새 제목'));
+  });
+
+  it('삭제: 확인 모달을 거쳐 deleteVideoWithObject 호출', async () => {
+    mockFetchVideos.mockResolvedValue([
+      { id: 'v1', title: '삭제 대상', s3Key: 'videos/library/v1/SOURCE.mp4',
+        fileName: 'a.mp4', sizeBytes: 1, createdAt: '2026-07-01T00:00:00.000Z' },
+    ]);
+    render(<MemoryRouter><LibraryManageComponent /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByTestId('library-delete-v1')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('library-delete-v1'));
+    fireEvent.click(screen.getByTestId('library-delete-confirm'));
+    await waitFor(() =>
+      expect(mockDeleteVideoWithObject).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'v1', s3Key: 'videos/library/v1/SOURCE.mp4' }),
+      ),
+    );
   });
 });
 

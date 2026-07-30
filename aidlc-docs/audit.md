@@ -165,3 +165,39 @@ YouTube 업로드로 진입하면 업로드된 리스트가 보입니다.
 **Context**: OPERATIONS - 배포 검증 완료. 전체 워크플로우 완료
 
 ---
+## 고아 레코드 삭제 (사후 운영 조치)
+**Timestamp**: 2026-07-30T08:40:00Z
+**User Input**: "코아 레코드 삭제."
+**AI Response**: "LongVideoEdit e5183651-ab82-4a9f-8cda-2ed0cb8a51cb (GMT20260728-093302_Recording_as_2880x1920.mp4, stage=0) 삭제. 삭제 전 재확인: S3 원본 없음, SFN 실행 없음, 자식 레코드(Segment/Output) 0건. 조건부 삭제(stage=0 가드)로 실행, 삭제 후 부재 확인 완료. 원인: 7/28 업로드 당시 프로덕션 버킷 유실 상태였음"
+**Context**: 운영 조치 — 고아 레코드 정리
+
+---
+## 신규 이터레이션 요청 (간단 수정 3건)
+**Timestamp**: 2026-07-30T09:00:00Z
+**User Input**: "aidlc 워크플로에서 간단한 아래와 같은 수정사항을 요청할 수 있는 기능도 있나요?
+모델 관리의 모델 새로고침버튼 클릭시 에러
+- 새로고침에 실패했습니다. 기존 목록을 유지합니다.
+
+영상 업로드 메뉴의 화면 분리
+- 영상 업로드만 남기고 내 라이브러리는 별도 메뉴로 진입
+
+내 라이브러리 관리 메뉴 신설
+- 내라이브러리 관리에서 영상에 대해 삭제 및 제목을 수정할 수 있는 기능 추가 (파일명은 그대로 보존하여 컬럼에 추가)"
+**AI Response**: "적응형 워크플로우로 Minimal depth 진행 (조건부 단계 생략). R1 버그는 원인 조사 선행"
+**Context**: 신규 이터레이션 'simple-fixes' — Requirements Analysis (Minimal)
+
+---
+## Iteration 2 (simple-fixes) 구현 완료
+**Timestamp**: 2026-07-30T09:20:00Z
+**User Input**: (표준 방침에 따른 자동 진행 — Minimal depth)
+**AI Response**: "R1: listFoundationModels 반환 item에 createdAt/updatedAt 누락 → AppSync non-null 검증 실패가 원인. 반환 객체에 포함하도록 수정. R2: /upload를 업로드 전용으로 축소, 성공 알림+라이브러리 링크. R3: /library 신설(LibraryManageComponent) — 파일명 컬럼(Video.fileName 필드 추가), 제목 수정 모달(빈 제목 불허), 삭제 확인 모달(S3 원본+레코드), 네비게이션에 '내 라이브러리' 추가. 게이트: build/tsc/lint/Vitest 31/31 통과. 배포 대기 (크리티컬 게이트)"
+**Context**: Iteration 2 — Code Generation + Build/Test 완료
+
+---
+## Iteration 2 배포 승인 (크리티컬 게이트)
+**Timestamp**: 2026-07-30T09:30:00Z
+**User Input**: "커밋 + push 진행"
+**AI Response**: "커밋 및 main push — 프로덕션 자동 배포 트리거. 배포 후 R1 새로고침 실검증 수행 예정"
+**Context**: Iteration 2 배포 승인
+
+---

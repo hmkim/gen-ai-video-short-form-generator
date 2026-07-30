@@ -7,6 +7,7 @@ import '@aws-amplify/ui-react/styles.css';
 import MainComponent from './pages/MainComponent';
 import VideoUploadComponent from './pages/VideoUploadComponent';
 import UnifiedUploadComponent from './pages/UnifiedUploadComponent';
+import LibraryManageComponent from './pages/LibraryManageComponent';
 import VideoShortifyComponent from './pages/VideoShortifyComponent';
 import ShortsHistoryComponent from './pages/ShortsHistroyComponent';
 import ShortsGalleryComponent from './pages/ShortsGalleryComponent';
@@ -33,6 +34,7 @@ function App() {
             <Route element={<MainComponent signOut={signOut} user={user}/>}>
               <Route path="/" element={<VideoUploadComponent />}></Route>
               <Route path="/upload" element={<UnifiedUploadComponent />}></Route>
+              <Route path="/library" element={<LibraryManageComponent />}></Route>
               <Route path="/history" element={<ShortsHistoryComponent />}></Route>
               <Route path="/gallery" element={<ShortsGalleryComponent />} />
               <Route path="/history/:id" element={<VideoShortifyComponent />}></Route>

@@ -138,6 +138,9 @@ export const handler: Schema['listFoundationModels']['functionHandler'] = async 
     try {
       if (!prior) {
         // New discovery -> PENDING (hidden until approved).
+        // createdAt/updatedAt must be on the returned item too, not only the
+        // DDB row: the GraphQL type declares them non-null, so omitting them
+        // makes AppSync reject the whole response (refresh button error).
         const item: ManagedModelItem = {
           id: randomUUID(),
           modelId,
@@ -145,11 +148,13 @@ export const handler: Schema['listFoundationModels']['functionHandler'] = async 
           provider,
           status: 'PENDING',
           isDefault: false,
+          createdAt: nowIso,
+          updatedAt: nowIso,
         };
         await ddbDocClient.send(
           new PutCommand({
             TableName: tableName,
-            Item: { ...item, createdAt: nowIso, updatedAt: nowIso },
+            Item: item,
             // Idempotent guard against a racing insert of the same modelId.
             ConditionExpression: 'attribute_not_exists(id)',
           }),
