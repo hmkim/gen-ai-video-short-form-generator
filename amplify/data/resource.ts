@@ -160,6 +160,18 @@ const schema = a.schema({
     })
     .authorization((allow) => [allow.authenticated()]),
 
+  // upload-library (US-1): 영상 라이브러리 레코드. 업로드 파일 1개 = 1 레코드.
+  // 파이프라인 처리 레코드(History/LongVideoEdit)와 달리 어떤 처리에도 귀속되지
+  // 않으며, s3Key는 videos/library/{videoId}/SOURCE.mp4 (트리거 미매칭 키).
+  Video: a
+    .model({
+      title: a.string().required(),
+      s3Key: a.string().required(),
+      sizeBytes: a.integer(),
+      status: a.enum(['UPLOADED']),
+    })
+    .authorization((allow) => [allow.owner()]),
+
   // U3 (F3): managed model catalog. Public catalog for a single-operator app —
   // `allow.authenticated()` mirrors Gallery/YouTubeUpload and avoids the
   // owner-scoped empty-dropdown trap (functional-design Q1=A).

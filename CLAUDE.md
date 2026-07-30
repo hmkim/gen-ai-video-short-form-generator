@@ -37,12 +37,13 @@ Single-page React app wrapped in `<Authenticator>` (Cognito). Routes defined in 
 
 | Route | Component | Purpose |
 |-------|-----------|---------|
-| `/` | `VideoUploadComponent` | Upload videos, select AI model |
+| `/upload` | `UnifiedUploadComponent` | Video library: upload once, reuse anywhere (Video model, `videos/library/{id}/SOURCE.mp4` — triggers no pipeline) |
+| `/` | `VideoUploadComponent` | Shorts creation: pick an uploaded video (`VideoPicker`) → metadata form → new History + S3 copy to `videos/{id}/RAW.mp4` |
 | `/history` | `ShortsHistoryComponent` | View processing history |
+| `/longvideo` | `LongVideoUploadComponent` | Speaker edit creation: pick an uploaded video → presenter form → new LongVideoEdit + S3 copy to `videos/{id}/LONG_RAW.mp4` |
 | `/gallery` | `ShortsGalleryComponent` | Browse generated shorts |
 | `/history/:id` | `VideoShortifyComponent` | Process a specific video |
 | `/shorts/:id/:highlight` | `FinalShortComponent` | View/edit final short |
-| `/longvideo` | `LongVideoUploadComponent` | Upload long videos |
 | `/longvideo/history` | `LongVideoHistoryComponent` | Long video history |
 | `/longvideo/edit/:id` | `LongVideoEditorComponent` | Edit segments/presenters |
 | `/longvideo/output/:id` | `LongVideoOutputComponent` | View/manage outputs |

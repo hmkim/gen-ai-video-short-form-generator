@@ -1,102 +1,135 @@
-// UnifiedUploadComponent.tsx
+// UnifiedUploadComponent.tsx — VideoLibraryPage
 //
-// U1 통합 업로드 — 런처 화면(`/upload`).
-//
-// 설계 결정: 기존 쇼츠/롱 업로드 흐름은 사전 메타데이터(쇼츠: 개수/테마/길이,
-// 롱: 발표자 수/이름)가 서로 달라 단일 업로드로 통합하지 않는다. 대신 이 화면은
-// 사용자가 목적을 먼저 고르도록 안내하는 "런처"이며, 각 목적 카드는 기존 라우트로
-// 이동한다(추가형 — 기존 라우트/컴포넌트는 그대로 유지).
+// upload-library (US-1, US-2): `/upload` = 영상 라이브러리.
+// 파일을 목적 없이 업로드해 두고(파이프라인 미트리거 키), 쇼츠만들기/화자별
+// 편집 화면이 이 라이브러리에서 영상을 선택해 처리를 시작한다.
+// 업로드 순서: S3 업로드 성공 → Video 레코드 생성 (W1 — 유령 레코드 방지).
 
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Box,
-  Button,
-  ColumnLayout,
   Container,
   ContentLayout,
+  FormField,
   Header,
+  Input,
   SpaceBetween,
+  Table,
 } from '@cloudscape-design/components';
+import { StorageManager } from '@aws-amplify/ui-react-storage';
+import { createVideo, fetchVideos, type Video } from '../apis/video';
+import { deriveTitle, librarySourceKey } from '../data/videoLibrary';
 
-/** 단일 목적 카드의 정적 정의. */
-interface PurposeCard {
-  /** 테스트/자동화용 안정 식별자 (kebab-case). */
-  testId: string;
-  /** 카드 제목. */
-  title: string;
-  /** 카드 설명(목적 안내). */
-  description: string;
-  /** CTA 버튼 라벨. */
-  actionLabel: string;
-  /** 클릭 시 이동할 기존 라우트. */
-  route: string;
-}
+const formatSize = (bytes?: number | null): string => {
+  if (bytes === undefined || bytes === null) return '-';
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  return `${Math.round(bytes / (1024 * 1024))} MB`;
+};
 
-/**
- * 3개 목적 카드 — 각 카드는 기존 흐름 라우트로 이동한다.
- * 라우트 경로는 기존 App.tsx 정의와 1:1로 일치해야 한다.
- */
-const PURPOSE_CARDS: readonly PurposeCard[] = [
-  {
-    testId: 'goto-shorts',
-    title: '쇼츠 만들기',
-    description: '긴 영상에서 하이라이트를 자동으로 추출해 짧은 쇼츠를 생성합니다.',
-    actionLabel: '쇼츠 만들기 시작',
-    route: '/',
-  },
-  {
-    testId: 'goto-longvideo',
-    title: '화자별 편집',
-    description: '긴 영상을 화자별로 분리하고 편집합니다.',
-    actionLabel: '화자별 편집 시작',
-    route: '/longvideo',
-  },
-  {
-    testId: 'goto-youtube',
-    title: 'YouTube 업로드',
-    description: '완성된 영상을 YouTube에 게시합니다.',
-    actionLabel: 'YouTube 업로드 열기',
-    route: '/youtube/uploads',
-  },
-];
-
-/**
- * `/upload` 런처 화면. 목적 카드를 선택하면 해당 기존 흐름으로 라우팅한다.
- * 접근성: H1 헤더, 각 카드의 CTA는 네이티브 버튼(키보드/스크린리더 지원).
- */
 const UnifiedUploadComponent: React.FC = () => {
-  const navigate = useNavigate();
+  const [videos, setVideos] = useState<Video[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [title, setTitle] = useState('');
+  // StorageManager 콜백 시점에 파일 메타데이터를 참조하기 위한 ref
+  const pendingUploads = useRef<Map<string, { title: string; size?: number }>>(new Map());
+
+  const refresh = useCallback(async () => {
+    try {
+      const items = await fetchVideos();
+      setVideos(
+        [...items].sort((a, b) => ((a.createdAt ?? '') < (b.createdAt ?? '') ? 1 : -1)),
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   return (
-    <ContentLayout
-      header={
-        <Header
-          variant="h1"
-          description="원하는 작업을 선택하세요. 각 작업은 전용 업로드 화면으로 이동합니다."
+    <ContentLayout header={<Header variant="h1">영상 업로드</Header>}>
+      <SpaceBetween size="l">
+        <Container
+          header={
+            <Header
+              variant="h2"
+              description="여기서 업로드한 영상은 쇼츠만들기·화자별 편집 어디서든 재사용할 수 있습니다."
+            >
+              라이브러리에 업로드
+            </Header>
+          }
         >
-          업로드
-        </Header>
-      }
-    >
-      <ColumnLayout columns={3} variant="default">
-        {PURPOSE_CARDS.map((card) => (
-          <div key={card.testId} data-testid={card.testId}>
-            <Container header={<Header variant="h2">{card.title}</Header>}>
-              <SpaceBetween size="m">
-                <Box variant="p">{card.description}</Box>
-                <Button
-                  variant="primary"
-                  ariaLabel={card.actionLabel}
-                  onClick={() => navigate(card.route)}
-                >
-                  {card.actionLabel}
-                </Button>
-              </SpaceBetween>
-            </Container>
-          </div>
-        ))}
-      </ColumnLayout>
+          <SpaceBetween size="m">
+            <FormField label="영상 제목" description="비워 두면 파일명을 제목으로 사용합니다.">
+              <Input
+                value={title}
+                onChange={({ detail }) => setTitle(detail.value)}
+                placeholder="예: 7월 웨비나 본편"
+                data-testid="library-title-input"
+              />
+            </FormField>
+            <StorageManager
+              acceptedFileTypes={['video/mp4']}
+              path="videos/"
+              maxFileCount={1}
+              useAccelerateEndpoint
+              processFile={({ file }) => {
+                const videoId = crypto.randomUUID();
+                // StorageManager는 path("videos/") + key로 최종 경로를 만든다
+                const key = librarySourceKey(videoId).replace(/^videos\//, '');
+                pendingUploads.current.set(librarySourceKey(videoId), {
+                  title: title.trim() !== '' ? title.trim() : deriveTitle(file.name),
+                  size: file.size,
+                });
+                return { file, key, useAccelerateEndpoint: true };
+              }}
+              onUploadSuccess={({ key }) => {
+                void (async () => {
+                  if (!key) return;
+                  const fullKey = key.startsWith('videos/') ? key : `videos/${key}`;
+                  const meta = pendingUploads.current.get(fullKey);
+                  await createVideo(
+                    meta?.title ?? deriveTitle(fullKey.split('/').pop() ?? ''),
+                    fullKey,
+                    meta?.size,
+                  );
+                  pendingUploads.current.delete(fullKey);
+                  setTitle('');
+                  await refresh();
+                })();
+              }}
+            />
+          </SpaceBetween>
+        </Container>
+
+        <Container header={<Header variant="h2" counter={`(${videos.length})`}>내 라이브러리</Header>}>
+          <Table
+            items={videos}
+            loading={loading}
+            loadingText="라이브러리를 불러오는 중…"
+            columnDefinitions={[
+              { id: 'title', header: '제목', cell: (v) => v.title },
+              {
+                id: 'createdAt',
+                header: '업로드 일시',
+                cell: (v) => (v.createdAt ? new Date(v.createdAt).toLocaleString() : '-'),
+              },
+              { id: 'size', header: '크기', cell: (v) => formatSize(v.sizeBytes) },
+            ]}
+            empty={
+              <Box textAlign="center" color="inherit" data-testid="library-empty-state">
+                <b>업로드된 영상이 없습니다</b>
+                <Box variant="p" color="inherit">
+                  위에서 영상을 업로드하면 쇼츠만들기·화자별 편집에서 선택할 수 있습니다.
+                </Box>
+              </Box>
+            }
+            data-testid="library-table"
+          />
+        </Container>
+      </SpaceBetween>
     </ContentLayout>
   );
 };

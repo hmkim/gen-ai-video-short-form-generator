@@ -193,7 +193,11 @@ new CfnRule(
           name: [s3Bucket.bucketName],
         },
         object: {
-          key: [{ prefix: "*/" }, { suffix: "RAW.mp4" }],
+          // upload-library (US-8): suffix "RAW.mp4"는 LONG_RAW.mp4에도 매칭되어
+          // 화자별 업로드가 쇼츠 파이프라인을 이중 트리거했다 (test-event-pattern으로
+          // 확정). wildcard는 "/RAW.mp4"로 끝나는 키만 매칭: LONG_RAW.mp4·라이브러리
+          // 키(videos/library/*/SOURCE.mp4)는 제외되고 기존 videos/{id}/RAW.mp4는 유지.
+          key: [{ wildcard: "*/RAW.mp4" }],
         },
       },
     },
