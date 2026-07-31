@@ -215,3 +215,17 @@ YouTube 업로드로 진입하면 업로드된 리스트가 보입니다.
 **Context**: Iteration 3 (UX 정리) — 구현 완료, push 대기
 
 ---
+## 전체 리소스 삭제 승인 (크리티컬)
+**Timestamp**: 2026-07-31T06:00:00Z
+**User Input**: "전부 삭제 진행"
+**AI Response**: "프로덕션 Amplify 앱 + sandbox 스택 + secret 삭제 진행 (사용자 데이터 853MB 포함, 복구 불가 고지 후 승인됨)"
+**Context**: OPERATIONS - 전체 리소스 해체
+
+---
+## 전체 리소스 삭제 완료 (최종 검증)
+**Timestamp**: 2026-07-31T07:40:00Z
+**User Input**: (승인 "전부 삭제 진행" 후 자동 진행)
+**AI Response**: "삭제 완료 — Amplify 앱, 프로덕션 스택(수동 재생성 버킷의 auto-delete 리소스로 2회 DELETE_FAILED → 버킷 직접 삭제 + RETAIN 재삭제로 해소), uvs-sandbox 스택, 추가 발견된 옛 ec2user-sandbox 스택, S3 버킷 9개, secret. 최종 검증: Amplify/CFN/S3/DynamoDB/Cognito/SFN/Lambda/EventBridge/AppSync/Secrets 전 유형 0건. 코드는 GitHub에 보존 — 재배포 가능"
+**Context**: OPERATIONS - 리소스 해체 완료
+
+---
