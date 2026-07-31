@@ -58,10 +58,14 @@ describe('UnifiedUploadComponent (영상 업로드 전용, US-1 + R2)', () => {
     vi.clearAllMocks();
   });
 
-  it('업로드 UI(제목 입력 + 업로더)가 보인다 — 라우팅 카드가 아니라 실제 업로드 화면 (AC-1.1)', () => {
+  it('업로더가 보인다 — 라우팅 카드가 아니라 실제 업로드 화면 (AC-1.1)', () => {
     render(<MemoryRouter><UnifiedUploadComponent /></MemoryRouter>);
-    expect(screen.getByTestId('library-title-input')).toBeInTheDocument();
     expect(screen.getByTestId('storage-manager-stub')).toBeInTheDocument();
+  });
+
+  it('iteration 3: 제목 입력 필드가 없다 — 제목은 파일명 파생, 수정은 /library', () => {
+    render(<MemoryRouter><UnifiedUploadComponent /></MemoryRouter>);
+    expect(screen.queryByTestId('library-title-input')).not.toBeInTheDocument();
   });
 
   it('R2: 업로드 화면에는 목록이 없고 내 라이브러리로의 이동 경로가 있다', () => {

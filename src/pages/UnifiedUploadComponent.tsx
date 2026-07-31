@@ -1,7 +1,8 @@
 // UnifiedUploadComponent.tsx — VideoLibraryPage (업로드 전용)
 //
-// upload-library (US-1) + iteration 2 (R2): `/upload` = 영상 업로드 전용 화면.
-// 목록은 별도 메뉴 "내 라이브러리"(/library, LibraryManageComponent)로 분리.
+// upload-library (US-1) + iteration 2 (R2) + iteration 3: `/upload` = 영상
+// 업로드 전용 화면. 제목 입력 없음 — 제목은 파일명에서 자동 파생되고, 수정은
+// "내 라이브러리"(/library)에서 한다 (저장 시점이 모호한 입력 필드 제거).
 // 업로드 순서: S3 업로드 성공 → Video 레코드 생성 (W1 — 유령 레코드 방지).
 
 import React, { useRef, useState } from 'react';
@@ -11,9 +12,7 @@ import {
   Button,
   Container,
   ContentLayout,
-  FormField,
   Header,
-  Input,
   SpaceBetween,
 } from '@cloudscape-design/components';
 import { StorageManager } from '@aws-amplify/ui-react-storage';
@@ -23,7 +22,6 @@ import { deriveTitle, librarySourceKey } from '../data/videoLibrary';
 
 const UnifiedUploadComponent: React.FC = () => {
   const navigate = useNavigate();
-  const [title, setTitle] = useState('');
   const [uploadedCount, setUploadedCount] = useState(0);
   // StorageManager 콜백 시점에 파일 메타데이터를 참조하기 위한 ref
   const pendingUploads = useRef<Map<string, { title: string; size?: number; fileName: string }>>(
@@ -56,14 +54,6 @@ const UnifiedUploadComponent: React.FC = () => {
               영상 {uploadedCount}개를 라이브러리에 추가했습니다.
             </Alert>
           )}
-          <FormField label="영상 제목" description="비워 두면 파일명을 제목으로 사용합니다.">
-            <Input
-              value={title}
-              onChange={({ detail }) => setTitle(detail.value)}
-              placeholder="예: 7월 웨비나 본편"
-              data-testid="library-title-input"
-            />
-          </FormField>
           <StorageManager
             acceptedFileTypes={['video/mp4']}
             path="videos/"
@@ -74,7 +64,7 @@ const UnifiedUploadComponent: React.FC = () => {
               // StorageManager는 path("videos/") + key로 최종 경로를 만든다
               const key = librarySourceKey(videoId).replace(/^videos\//, '');
               pendingUploads.current.set(librarySourceKey(videoId), {
-                title: title.trim() !== '' ? title.trim() : deriveTitle(file.name),
+                title: deriveTitle(file.name), // 제목 = 파일명 파생 (수정은 /library)
                 size: file.size,
                 fileName: file.name, // R3: 원본 파일명 보존
               });
@@ -92,13 +82,12 @@ const UnifiedUploadComponent: React.FC = () => {
                   meta?.fileName,
                 );
                 pendingUploads.current.delete(fullKey);
-                setTitle('');
                 setUploadedCount((n) => n + 1);
               })();
             }}
           />
           <Box color="text-body-secondary">
-            업로드한 영상의 제목 수정·삭제는{' '}
+            제목은 파일명으로 자동 설정됩니다. 제목 수정·삭제는{' '}
             <Button variant="inline-link" onClick={() => navigate('/library')}>
               내 라이브러리
             </Button>

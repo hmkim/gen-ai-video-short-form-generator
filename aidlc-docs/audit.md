@@ -208,3 +208,10 @@ YouTube 업로드로 진입하면 업로드된 리스트가 보입니다.
 **Context**: Iteration 2 완료 — 배포·검증 종료
 
 ---
+## Iteration 3: 업로드 화면 제목 입력 제거
+**Timestamp**: 2026-07-31T00:30:00Z
+**User Input**: "영상 업로드에서 영상 제목을 입력하고나서 저장하는 버튼이 없는데, 아예 삭제하는게 차라리 나을듯?"
+**AI Response**: "제목 입력 필드 제거 — 제목은 파일명(deriveTitle) 자동 파생, 수정은 /library에서. 안내 문구 갱신, 테스트 갱신(+제목 필드 부재 검증). 게이트: tsc/lint/Vitest 32/32 통과. 프론트 전용 변경"
+**Context**: Iteration 3 (UX 정리) — 구현 완료, push 대기
+
+---
